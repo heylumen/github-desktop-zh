@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 运行时产物（由工具生成的备份 / 输出 / 完整性清单）
+*.bak
+new-strings.zh
+*.zh.tmp
+.zhtool_manifest.json
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 本地配置
+.env
+
+# PyInstaller 构建产物（gui/）
+gui/build_env/
+gui/build/
+gui/dist/
+gui/*.spec
+gui/build_run*.log
+
+# 上游原始仓库 dump（仅本地参考，不入库；汉化内容已提取到 dictionaries/）
+GitHub_Desktop_Simplified_Chinese/

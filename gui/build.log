@@ -1,0 +1,73 @@
+848 INFO: PyInstaller: 6.22.2, contrib hooks: 2026.7
+849 INFO: Python: 3.13.14
+884 INFO: Platform: Windows-10-10.0.19044-SP0
+884 INFO: Python environment: D:\Github\1255104520xfxx2022\github-desktop-zh\gui\build_env
+892 INFO: Removing temporary files and cleaning cache in C:\Users\XiaoMi\AppData\Local\pyinstaller
+905 INFO: Module search paths (PYTHONPATH):
+['D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui',
+ 'C:\\Users\\XiaoMi\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python313.zip',
+ 'C:\\Users\\XiaoMi\\.workbuddy\\binaries\\python\\versions\\3.13.12\\DLLs',
+ 'C:\\Users\\XiaoMi\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib',
+ 'C:\\Users\\XiaoMi\\.workbuddy\\binaries\\python\\versions\\3.13.12',
+ 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env',
+ 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages',
+ 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui',
+ 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh']
+1597 INFO: Appending 'datas' from .spec
+1600 INFO: checking Analysis
+1600 INFO: Building Analysis because Analysis-00.toc is non existent
+1600 INFO: Looking for Python shared library...
+1600 INFO: Using Python shared library: C:\Users\XiaoMi\.workbuddy\binaries\python\versions\3.13.12\python313.dll
+1600 INFO: Running Analysis Analysis-00.toc
+1600 INFO: Target bytecode optimization level: 2
+1600 INFO: Initializing module dependency graph...
+1606 INFO: Initializing module graph hook caches...
+1627 INFO: Analyzing modules for base_library.zip ...
+3812 INFO: Processing standard module hook 'hook-encodings.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+5434 INFO: Processing standard module hook 'hook-math.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+5875 INFO: Processing standard module hook 'hook-heapq.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+7536 INFO: Processing standard module hook 'hook-pickle.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+9419 INFO: Caching module dependency graph...
+9458 INFO: Analyzing D:\Github\1255104520xfxx2022\github-desktop-zh\gui\app.py
+9536 INFO: Processing standard module hook 'hook-webbrowser.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+9612 INFO: Processing standard module hook 'hook-sysconfig.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+9625 INFO: Processing standard module hook 'hook-_ctypes.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+9645 INFO: Processing standard module hook 'hook-PySide6.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+10211 INFO: Processing standard module hook 'hook-shiboken6.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+11198 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+14918 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+30826 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+34218 INFO: Processing module hooks (post-graph stage)...
+34226 INFO: Performing binary vs. data reclassification (127 entries)
+34273 INFO: Looking for ctypes DLLs
+34285 INFO: Analyzing run-time hooks ...
+34286 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+34289 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+34291 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+34296 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PyInstaller\\hooks'
+34307 INFO: Creating base_library.zip...
+34581 INFO: Looking for dynamic libraries
+35117 INFO: Extra DLL search directories (AddDllDirectory): ['D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\shiboken6']
+35117 INFO: Extra DLL search directories (PATH): ['D:\\Github\\1255104520xfxx2022\\github-desktop-zh\\gui\\build_env\\Lib\\site-packages\\PySide6']
+37234 INFO: Warnings written to D:\Github\1255104520xfxx2022\github-desktop-zh\gui\build\github-desktop-zh-1.0.1\warn-github-desktop-zh-1.0.1.txt
+37271 INFO: Graph cross-reference written to D:\Github\1255104520xfxx2022\github-desktop-zh\gui\build\github-desktop-zh-1.0.1\xref-github-desktop-zh-1.0.1.html
+37388 INFO: checking PYZ
+37388 INFO: Building PYZ because PYZ-00.toc is non existent
+37388 INFO: Building PYZ (ZlibArchive) D:\Github\1255104520xfxx2022\github-desktop-zh\gui\build\github-desktop-zh-1.0.1\PYZ-00.pyz
+38018 INFO: Building PYZ (ZlibArchive) D:\Github\1255104520xfxx2022\github-desktop-zh\gui\build\github-desktop-zh-1.0.1\PYZ-00.pyz completed successfully.
+38034 INFO: checking PKG
+38035 INFO: Building PKG because PKG-00.toc is non existent
+38035 INFO: Building PKG (CArchive) github-desktop-zh-1.0.1.pkg
+48237 INFO: Building PKG (CArchive) github-desktop-zh-1.0.1.pkg completed successfully.
+48240 INFO: Bootloader D:\Github\1255104520xfxx2022\github-desktop-zh\gui\build_env\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+48240 INFO: checking EXE
+48240 INFO: Building EXE because EXE-00.toc is non existent
+48240 INFO: Building EXE from EXE-00.toc
+48241 INFO: Copying bootloader EXE to D:\Github\1255104520xfxx2022\github-desktop-zh\gui\dist\github-desktop-zh-1.0.1.exe
+48513 INFO: Copying icon to EXE
+48836 INFO: Copying 0 resources to EXE
+48836 INFO: Embedding manifest in EXE
+49137 INFO: Appending PKG archive to EXE
+49164 INFO: Fixing EXE headers
+49359 INFO: Building EXE from EXE-00.toc completed successfully.
+49362 INFO: Build complete! The results are available in: D:\Github\1255104520xfxx2022\github-desktop-zh\gui\dist

@@ -3,8 +3,8 @@
 """
 app.py — GitHub Desktop 汉化工具（Windows 版 GUI，PySide6 / Qt6）
 =====================================================================
-- 仅支持 Windows 10 / 11；内置多个 GitHub Desktop 汉化版本（3.5.0 – 3.6.5）。
-- 全部汉化资源已打包进 EXE（源自 743859910 的 MIT 整文件补丁），纯离线、不联网。
+- 仅支持 Windows 10 / 11；仓库收录 3.5.0–3.6.5、3.6.10，EXE 默认打包最新 5 版。
+- 旧版采用上游 MIT 整文件补丁；3.6.10 为官方同版本底包的中文字符串适配，纯离线、不联网。
 - 设计系统：整体白色主题（默认亮色，可切暗色）+ 白色卡片 + 充足留白；侧栏底部分段切换。
 
 构建：见同目录 build.bat
@@ -22,9 +22,10 @@ from PySide6.QtWidgets import (
     QAbstractButton, QApplication, QButtonGroup, QComboBox, QFileDialog, QFrame,
     QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPushButton, QScrollArea, QSizePolicy, QStackedWidget,
-    QStatusBar, QVBoxLayout, QWidget,
+    QPlainTextEdit, QStatusBar, QVBoxLayout, QWidget,
 )
 
+import copilot_config
 import zhcore
 
 APP_TITLE = "GitHub Desktop 汉化工具"
@@ -107,11 +108,11 @@ QPushButton#Danger:hover { background: #fef2f2; }
 QPushButton#Danger:disabled { color: #fca5a5; border-color: #fca5a5; background: #ffffff; }
 
 /* 输入 */
-QLineEdit { background: #ffffff; border: 1px solid #d1d5db; border-radius: 8px;
+QLineEdit, QPlainTextEdit { background: #ffffff; border: 1px solid #d1d5db; border-radius: 8px;
     padding: 8px 12px; font-size: 13px; color: #111827;
     selection-background-color: #cbd5e1; selection-color: #111827; }
-QLineEdit:focus { border: 1px solid #0d6b5e; }
-QLineEdit:disabled { background: #f3f4f6; color: #9ca3af; }
+QLineEdit:focus, QPlainTextEdit:focus { border: 1px solid #0d6b5e; }
+QLineEdit:disabled, QPlainTextEdit:disabled { background: #f3f4f6; color: #9ca3af; }
 QComboBox { background: #ffffff; border: 1px solid #d1d5db; border-radius: 8px;
     padding: 7px 12px; font-size: 13px; color: #111827; }
 QComboBox:focus { border: 1px solid #0d6b5e; }
@@ -217,11 +218,11 @@ QPushButton#Danger { background: #132622; color: #f87171; border: 1px solid #f87
 QPushButton#Danger:hover { background: #2a1212; }
 QPushButton#Danger:disabled { color: #4b5563; border-color: #374151; background: #132622; }
 
-QLineEdit { background: #1a2f2b; border: 1px solid #1f3530; border-radius: 8px;
+QLineEdit, QPlainTextEdit { background: #1a2f2b; border: 1px solid #1f3530; border-radius: 8px;
     padding: 8px 12px; font-size: 13px; color: #e5e7eb;
     selection-background-color: #134e4a; selection-color: #5eead4; }
-QLineEdit:focus { border: 1px solid #14b8a6; }
-QLineEdit:disabled { background: #0f1f1c; color: #4b5563; }
+QLineEdit:focus, QPlainTextEdit:focus { border: 1px solid #14b8a6; }
+QLineEdit:disabled, QPlainTextEdit:disabled { background: #0f1f1c; color: #4b5563; }
 QComboBox { background: #1a2f2b; border: 1px solid #1f3530; border-radius: 8px;
     padding: 7px 12px; font-size: 13px; color: #e5e7eb; }
 QComboBox:focus { border: 1px solid #14b8a6; }
@@ -310,6 +311,7 @@ class Worker(QThread):
 NAV_ITEMS = [
     ("汉化", "hanhua"),
     ("字典", "zidian"),
+    ("Copilot 提示词", "copilot"),
     ("关于", "guanyu"),
 ]
 
@@ -337,6 +339,21 @@ def _nav_icon(kind: str, color: str, size: int = 18) -> QIcon:
     elif kind == "zidian":      # 书本
         p.drawRoundedRect(QRectF(6, 2, 14, 20), 2.5, 2.5)
         p.drawLine(QPointF(6, 17), QPointF(20, 17))
+    elif kind == "copilot":     # 提示词气泡
+        path = QPainterPath(QPointF(5, 4))
+        path.lineTo(19, 4)
+        path.quadTo(22, 4, 22, 7)
+        path.lineTo(22, 15)
+        path.quadTo(22, 18, 19, 18)
+        path.lineTo(10, 18)
+        path.lineTo(5, 22)
+        path.lineTo(5, 18)
+        path.quadTo(2, 18, 2, 15)
+        path.lineTo(2, 7)
+        path.quadTo(2, 4, 5, 4)
+        p.drawPath(path)
+        p.drawLine(QPointF(7, 9), QPointF(17, 9))
+        p.drawLine(QPointF(7, 13), QPointF(14, 13))
     else:                       # guanyu：信息圆
         p.drawEllipse(QPointF(12, 12), 10, 10)
         p.drawLine(QPointF(12, 16), QPointF(12, 11))
@@ -622,6 +639,7 @@ class App(QMainWindow):
         # 各页统一套滚动区：窗口变小时可滚动，避免控件被挤压变形
         self._pages["汉化"] = self._wrap_scroll(self._build_home())
         self._pages["字典"] = self._wrap_scroll(self._build_dict())
+        self._pages["Copilot 提示词"] = self._wrap_scroll(self._build_copilot())
         self._pages["关于"] = self._wrap_scroll(self._build_about())
         for w in self._pages.values():
             self._stack.addWidget(w)
@@ -651,6 +669,8 @@ class App(QMainWindow):
         self._stack.setCurrentWidget(self._pages[name])
         if name == "字典":
             self._refresh_dict_page()
+        elif name == "Copilot 提示词" and not self._copilot_has_changes():
+            self._load_copilot_prompt()
 
     # ---------------------------------------------------------------- 主页
     def _build_home(self):
@@ -674,7 +694,7 @@ class App(QMainWindow):
         row1 = QHBoxLayout()
         row1.setSpacing(8)
         self.path_var = QLineEdit()
-        self.path_var.setPlaceholderText(r"例如 C:\Users\你\AppData\Local\GitHubDesktop\app-3.6.4\resources\app")
+        self.path_var.setPlaceholderText(r"例如 C:\Users\你\AppData\Local\GitHubDesktop\app-3.6.10\resources\app")
         self.path_var.setMinimumHeight(36)
         row1.addWidget(self.path_var, 1)
         row1.addWidget(self._make_btn("浏览", "Secondary", self._browse))
@@ -751,7 +771,7 @@ class App(QMainWindow):
         n = len(zhcore.list_versions())
         outer.addLayout(self._make_page_header(
             title="内置汉化版本",
-            sub="源自 743859910 的 MIT 整文件补丁，纯净离线。",
+            sub="旧版来自上游 MIT 补丁；3.6.10 基于官方同版本底包适配。",
             right_widget=self._make_badge("BadgeInfo", f"{n} 个版本"),
         ))
 
@@ -776,8 +796,8 @@ class App(QMainWindow):
         outer.addWidget(c2.frame, 1)
 
         tip = self._make_tip(
-            "提示：内置最新 5 个汉化版本（3.6.0–3.6.4）。"
-            "当 GitHub Desktop 推出未内置的新版本，或你使用的是未内置的旧版（3.5.0–3.5.9）时，可按以下步骤自定义汉化：\n"
+            "提示：可用汉化版本见上方列表，EXE 默认打包仓库内最新 5 个版本。"
+            "当 GitHub Desktop 推出未内置的新版本，或你使用的是未内置的旧版时，可按以下步骤自定义汉化：\n"
             "1. 在 GitHub Desktop 的「帮助 → 关于 GitHub Desktop」中查看你的版本号（如 3.7.0 或 3.5.5）\n"
             "2. 前往字典项目（743859910 的仓库）下载或适配该版本的 main.js + renderer.js\n"
             "3. 点击上方「打开本地字典目录」，在弹出的 dictionaries/ 下新建与版本号完全一致的子目录（如 3.7.0）\n"
@@ -807,6 +827,149 @@ class App(QMainWindow):
         zhcore.validate_builtin(
             log=lambda m: self._append_log(m, target=self.dict_check_list))
 
+    # ---------------------------------------------------------------- Copilot 全局提示词
+    def _build_copilot(self):
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(24, 14, 24, 14)
+        outer.setSpacing(10)
+        outer.addLayout(self._make_page_header(
+            title="Copilot 全局提交提示词",
+            sub="统一设置生成提交说明时的语言、格式与内容要求。",
+            right_widget=self._make_badge("BadgeInfo", "用户级配置"),
+        ))
+
+        path_card = self._make_card("全局指令文件", "保存后供所有项目的 Copilot 会话读取")
+        self.copilot_path = QLineEdit()
+        self.copilot_path.setReadOnly(True)
+        self.copilot_path.setAccessibleName("Copilot 全局指令文件路径")
+        path_card.body.addWidget(self.copilot_path)
+        outer.addWidget(path_card.frame)
+
+        prompt_card = self._make_card("提交说明要求", "仅编辑本工具管理的部分，保留文件中的其他全局指令")
+        self.copilot_editor = QPlainTextEdit()
+        self.copilot_editor.setAccessibleName("Copilot 全局提交说明提示词")
+        self.copilot_editor.setPlaceholderText("输入生成提交说明时的要求，或点击“填入中文模板”。保存后生效。")
+        self.copilot_editor.setMinimumHeight(220)
+        self.copilot_editor.textChanged.connect(self._on_copilot_text_changed)
+        prompt_card.body.addWidget(self.copilot_editor)
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.btn_copilot_preset = self._make_btn("填入中文模板", "Secondary", self._on_copilot_preset)
+        self.btn_copilot_clear = self._make_btn("清空", "Ghost", self._on_copilot_clear)
+        self.btn_copilot_reload = self._make_btn("重新读取", "Secondary", self._on_copilot_reload)
+        self.btn_copilot_save = self._make_btn("保存全局提示词", "Primary", self._save_copilot_prompt)
+        row.addWidget(self.btn_copilot_preset)
+        row.addWidget(self.btn_copilot_clear)
+        row.addStretch(1)
+        row.addWidget(self.btn_copilot_reload)
+        row.addWidget(self.btn_copilot_save)
+        prompt_card.body.addLayout(row)
+        self.copilot_status = QLabel()
+        self.copilot_status.setObjectName("CardSub")
+        self.copilot_status.setWordWrap(True)
+        self.copilot_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        prompt_card.body.addWidget(self.copilot_status)
+        outer.addWidget(prompt_card.frame, 1)
+
+        other_card = self._make_card("其他全局指令", "以下内容会被保留，也可能影响生成结果")
+        self._copilot_other_card = other_card.frame
+        self.copilot_other = QPlainTextEdit()
+        self.copilot_other.setReadOnly(True)
+        self.copilot_other.setAccessibleName("保留的其他全局指令")
+        self.copilot_other.setMinimumHeight(80)
+        self.copilot_other.setMaximumHeight(120)
+        other_card.body.addWidget(self.copilot_other)
+        outer.addWidget(other_card.frame)
+        outer.addWidget(self._make_tip(
+            "保存后重新生成一次提交说明；若仍沿用旧要求，可重启 GitHub Desktop。\n"
+            "清空后保存会移除本工具的要求。此设置适用于支持自定义指令的 Copilot 生成方式。"))
+        self._copilot_revision = None
+        self._copilot_loaded_text = ""
+        self._load_copilot_prompt()
+        return page
+
+    def _load_copilot_prompt(self):
+        try:
+            self.copilot_path.setText(copilot_config.global_instructions_path())
+            state = copilot_config.load_global_commit_instructions()
+        except (OSError, UnicodeError, ValueError) as exc:
+            self._copilot_revision = None
+            self.copilot_editor.setReadOnly(True)
+            self.btn_copilot_save.setEnabled(False)
+            self.btn_copilot_preset.setEnabled(False)
+            self.btn_copilot_clear.setEnabled(False)
+            self.copilot_status.setText(f"读取失败：{exc}。处理后点击“重新读取”。")
+            return False
+        self._copilot_revision = state["revision"]
+        self._copilot_loaded_text = state["prompt"]
+        self.copilot_path.setText(state["path"])
+        self.copilot_path.setToolTip(state["path"])
+        self.copilot_path.setCursorPosition(0)
+        self.copilot_editor.setReadOnly(False)
+        self.btn_copilot_preset.setEnabled(True)
+        self.btn_copilot_clear.setEnabled(True)
+        self.copilot_editor.setPlainText(state["prompt"])
+        self.copilot_editor.document().setModified(False)
+        self.copilot_other.setPlainText(state["other_instructions"])
+        self._copilot_other_card.setVisible(bool(state["other_instructions"].strip()))
+        self.btn_copilot_save.setEnabled(False)
+        self.copilot_status.setText("已读取已保存的提示词。" if state["prompt"] else
+                                    "尚未设置提交说明要求。填入模板或输入内容后保存。")
+        return True
+
+    def _on_copilot_text_changed(self):
+        if not hasattr(self, "btn_copilot_save"):
+            return
+        changed = self._copilot_has_changes()
+        self.btn_copilot_save.setEnabled(changed and self._copilot_revision is not None)
+        if changed:
+            self.copilot_status.setText("有未保存的更改。" if self.copilot_editor.toPlainText().strip()
+                                        else "保存后将移除本工具的提示词，其他全局指令会保留。")
+        else:
+            self.copilot_status.setText("与已读取的内容一致。")
+
+    def _copilot_has_changes(self):
+        # setPlainText()/clear() reset QTextDocument.isModified after textChanged.
+        # Compare the draft itself so preset/clear/undo behave like typed edits.
+        return self.copilot_editor.toPlainText() != self._copilot_loaded_text
+
+    def _on_copilot_preset(self):
+        self.copilot_editor.setPlainText(copilot_config.DEFAULT_COMMIT_INSTRUCTIONS)
+
+    def _on_copilot_clear(self):
+        self.copilot_editor.clear()
+
+    def _on_copilot_reload(self):
+        if self._copilot_has_changes():
+            result = QMessageBox.question(
+                self, "重新读取提示词", "编辑区有未保存的更改。重新读取将丢弃这些更改，是否继续？",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if result != QMessageBox.Yes:
+                return
+        self._load_copilot_prompt()
+
+    def _save_copilot_prompt(self):
+        if self._copilot_revision is None:
+            return False
+        try:
+            result = copilot_config.save_global_commit_instructions(
+                self.copilot_editor.toPlainText(), expected_revision=self._copilot_revision)
+        except (OSError, UnicodeError, ValueError) as exc:
+            self.copilot_status.setText(f"保存失败：{exc}")
+            self._set_status("Copilot 全局提示词保存失败")
+            return False
+        if not self._load_copilot_prompt():
+            return False
+        message = "已保存全局提示词。重新生成提交说明即可使用。"
+        if not self.copilot_editor.toPlainText().strip():
+            message = "已移除本工具的提示词，其他全局指令已保留。"
+        if result["backup_path"]:
+            message += f"\n原文件备份：{result['backup_path']}"
+        self.copilot_status.setText(message)
+        self._set_status("Copilot 全局提示词已保存")
+        return True
+
     # ---------------------------------------------------------------- 关于页
     def _build_about(self):
         page = QWidget()
@@ -820,8 +983,9 @@ class App(QMainWindow):
 
         c1 = self._make_card(f"{APP_TITLE}  v{APP_VERSION}")
         body = QLabel(
-            "基于 GitHub 用户 743859910 提供的 MIT 许可整文件汉化补丁，对 GitHub Desktop 的\n"
-            "main.js / renderer.js 做整体中文替换。\n\n"
+            "3.5.0–3.6.5 采用 743859910 提供的 MIT 整文件汉化补丁；\n"
+            "3.6.10 在官方同版本底包上移植中文字符串，保留当前版本逻辑。\n"
+            "按所选版本整体替换 main.js / renderer.js。\n\n"
             "本工具基于 MIT 许可开源，与 GitHub, Inc. 无任何关联。\n"
             "仅支持 Windows 10 / 11。")
         body.setObjectName("CardSub")
@@ -1212,6 +1376,22 @@ class App(QMainWindow):
             self._set_status("操作异常")
 
     def closeEvent(self, event):
+        if self._copilot_has_changes():
+            box = QMessageBox(self)
+            box.setWindowTitle("提示词尚未保存")
+            box.setText("Copilot 全局提示词有未保存的更改。")
+            save = box.addButton("保存并退出", QMessageBox.AcceptRole)
+            discard = box.addButton("放弃更改", QMessageBox.DestructiveRole)
+            box.addButton("取消", QMessageBox.RejectRole)
+            box.setDefaultButton(save)
+            box.exec()
+            if box.clickedButton() is save:
+                if not self._save_copilot_prompt():
+                    event.ignore()
+                    return
+            elif box.clickedButton() is not discard:
+                event.ignore()
+                return
         if self._worker is not None and self._worker.isRunning():
             # 后台线程可能正在写 main.js/renderer.js：强杀可能留下不完整文件，
             # 因此先征询用户，用户选择继续等待则取消关闭。

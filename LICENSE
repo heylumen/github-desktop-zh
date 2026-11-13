@@ -3,10 +3,14 @@ MIT License
 Copyright (c) 2026 heylumen
 Copyright (c) 2008 - 2026 743859910（我只是你的过客工作室）. All Rights Reserved.
 
-本仓库中的 `dictionaries/*.zh` 中文词典衍生自
+本仓库中的中文词典及汉化译文衍生自
 743859910/GitHub_Desktop_Simplified_Chinese（MIT License）。
 依据其 MIT 许可条款，在此保留其版权声明与上述许可声明，
 并随本仓库一并提供。
+
+3.6.10 的程序底包来自 GitHub, Inc. 的 GitHub Desktop（MIT License），
+其许可保留于 licenses/github-desktop-LICENSE 及对应字典目录。
+各 JavaScript 包所含第三方许可随对应的 *.LICENSE.txt 文件保留。
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -3,7 +3,7 @@
 """
 app.py — GitHub Desktop 汉化工具（Windows 版 GUI，PySide6 / Qt6）
 =====================================================================
-- 仅支持 Windows 10 / 11；仓库收录 3.5.0–3.6.5、3.6.10，EXE 默认打包最新 5 版。
+- 仅支持 Windows 10 / 11；仓库收录 3.5.0–3.6.7、3.6.10，EXE 默认打包最新 5 版。
 - 旧版采用上游 MIT 整文件补丁；3.6.10 为官方同版本底包的中文字符串适配，纯离线、不联网。
 - 设计系统：整体白色主题（默认亮色，可切暗色）+ 白色卡片 + 充足留白；侧栏底部分段切换。
 
@@ -29,7 +29,7 @@ import copilot_config
 import zhcore
 
 APP_TITLE = "GitHub Desktop 汉化工具"
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 PROJECT_URL = "https://github.com/heylumen/github-desktop-zh"
 DICT_URL = "https://github.com/743859910/GitHub_Desktop_Simplified_Chinese"
 SETTINGS_ORG = "github-desktop-zh"
@@ -983,7 +983,7 @@ class App(QMainWindow):
 
         c1 = self._make_card(f"{APP_TITLE}  v{APP_VERSION}")
         body = QLabel(
-            "3.5.0–3.6.5 采用 743859910 提供的 MIT 整文件汉化补丁；\n"
+            "3.5.0–3.6.7 采用 743859910 提供的 MIT 整文件汉化补丁；\n"
             "3.6.10 在官方同版本底包上移植中文字符串，保留当前版本逻辑。\n"
             "按所选版本整体替换 main.js / renderer.js。\n\n"
             "本工具基于 MIT 许可开源，与 GitHub, Inc. 无任何关联。\n"

@@ -25,29 +25,31 @@ zhtool.py — GitHub Desktop 中文汉化补丁工具（版本无关 / version-a
 
 典型用法：
     # 干跑，仅查看会改哪些、哪些命中/未命中，不写文件
-    python zhtool.py apply --appdir "C:/Users/你/AppData/Local/GitHubDesktop/app-3.6.4/resources/app" --zh dictionaries/Windows.zh --dry-run
+    python zhtool.py apply --appdir "C:/Users/你/AppData/Local/GitHubDesktop/app-3.6.10/resources/app" --zh translations/3.6.10.zh --dry-run
 
     # 真正打补丁（自动备份原文件为 .bak，并生成 .zhtool_manifest.json）
-    python zhtool.py apply --appdir "..." --zh dictionaries/Windows.zh
+    python zhtool.py apply --appdir "..." --zh translations/3.6.10.zh
 
     # 校验当前安装是否仍是上次打补丁后的状态
     python zhtool.py verify --appdir "..."
 
     # 常驻监控：GD 一更新就自动恢复中文（可放进开机/计划任务）
-    python zhtool.py watch --appdir "..." --zh dictionaries/Windows.zh --interval 60
+    python zhtool.py watch --appdir "..." --zh translations/3.6.10.zh --interval 60
 """
 
 import argparse
-import glob
 import hashlib
 import json
 import os
 import re
 import sys
+import tempfile
 import time
 
+import zhpaths
+
 DELIM = ">*.*<"  # .zh 字段分隔符
-KNOWN_TARGETS = ("main.js", "renderer.js")
+KNOWN_TARGETS = zhpaths.TARGETS
 MANIFEST_NAME = ".zhtool_manifest.json"  # 打补丁后写入的 SHA-256 清单
 
 
@@ -139,13 +141,37 @@ def apply_entries(text, entries):
     return out, matched, unmatched
 
 
+def _atomic_write_bytes(path, data, mode=None):
+    """同目录临时文件 + fsync + os.replace；失败不破坏原文件。"""
+    directory = os.path.dirname(path) or "."
+    fd, temp_path = tempfile.mkstemp(
+        prefix="." + os.path.basename(path) + ".zhtool-", suffix=".tmp",
+        dir=directory)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if mode is not None:
+            os.chmod(temp_path, mode)
+        os.replace(temp_path, path)
+    except BaseException:
+        try:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
+
 def apply_to_files(app_files, zh_files, dry_run, manifest_path=None, log=print):
-    """
-    app_files: [(target_name, path), ...]  如 [("main.js", ...), ("renderer.js", ...)]
-    zh_files : [path, ...]
-    按 target_name 把词典分流到对应文件，逐文件应用并打印报告。
-    非 dry-run 时把每个文件打补丁后的 SHA-256 写入 manifest。
-    log: 日志回调（默认 print），便于 GUI 接管输出。
+    """把 .zh 事务式应用到 main.js / renderer.js。
+
+    非 dry-run 时的约束：
+    - 必须同时提供 main.js 与 renderer.js，禁止只改一半；
+    - 所有内容先写同目录临时文件，成功后再逐个 os.replace；
+    - 任一替换失败，已替换文件用内存中的原始内容回滚；
+    - 已有 .bak 不覆盖，但回滚不依赖 .bak 是否存在。
     """
     by_target = {t: [] for t in KNOWN_TARGETS}
     total = 0
@@ -159,63 +185,145 @@ def apply_to_files(app_files, zh_files, dry_run, manifest_path=None, log=print):
                 sys.stderr.write(f"[warn] 未知目标文件 {tgt!r}，按 renderer.js 处理：{e[0]!r}\n")
                 by_target["renderer.js"].append(e)
 
-    manifest = {"version": 1, "zh": [os.path.abspath(z) for z in zh_files], "files": {}}
-    grand_matched = grand_unmatched = 0
-    for tgt, path in app_files:
-        entries = by_target.get(tgt, [])
-        if not entries:
-            log(f"\n· {tgt}: 词典中无对应条目，跳过。")
-            continue
-        with open(path, encoding="utf-8") as f:
-            src = f.read()
-        new_text, matched, unmatched = apply_entries(src, entries)
-        grand_matched += len(matched)
-        grand_unmatched += len(unmatched)
-        log(f"\n■ {tgt}  ({len(src)} → {len(new_text)} 字节)")
-        log(f"  词典条目 {len(entries)} | 命中 {len(matched)} | 未命中 {len(unmatched)}")
-        if unmatched:
-            log(f"  ⚠ 未命中（可能该串在新版已被改名/移除，建议核对）：")
-            for u in unmatched[:40]:
-                log(f"     - {u!r}")
-            if len(unmatched) > 40:
-                log(f"     ... 其余 {len(unmatched) - 40} 条省略")
-        if not dry_run:
-            bak = path + ".bak"
-            moved = False
-            if not os.path.exists(bak):
-                try:
-                    os.replace(path, bak)
-                    moved = True
-                    log(f"  ✓ 已备份原文件 -> {bak}")
-                except OSError as e:
-                    log(f"  ✗ [错误] 无法备份 {tgt}（原文件保持不动）：{e}")
-                    continue
-            try:
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(new_text)
-            except OSError as e:
-                # 原文件已被移走，不还原会让 GitHub Desktop 缺少该文件
-                log(f"  ✗ [错误] 写入 {tgt} 失败：{e}")
-                if moved and not os.path.exists(path):
-                    try:
-                        os.replace(bak, path)
-                        log(f"  ↩ 已回滚 {tgt}（原文件已还原，未造成损坏）")
-                    except OSError as e2:
-                        log(f"  ✗ 回滚失败：{e2}")
-                        log(f"  ⚠ 请手动把 {bak} 改名为 {path} 以恢复 GitHub Desktop")
+    manifest = {"version": 1, "zh": [os.path.abspath(z) for z in zh_files],
+                "files": {}, "ok": True, "failures": []}
+    failures = manifest["failures"]
+    targets = {name for name, _ in app_files}
+
+    applied = 0
+    if not dry_run and targets != set(KNOWN_TARGETS):
+        missing = sorted(set(KNOWN_TARGETS) - targets)
+        failures.append("缺少目标文件：" + "、".join(missing))
+        log("✗ [错误] 为保持 main.js / renderer.js 一致，必须同时提供两个文件；未写入任何文件")
+    else:
+        plan = []
+        for tgt, path in app_files:
+            entries = by_target.get(tgt, [])
+            if not entries:
+                log(f"\n· {tgt}: 词典中无对应条目，跳过。")
                 continue
-            log(f"  ✓ 已写入汉化后的 {tgt}")
-            manifest["files"][tgt] = sha256_of(path)
-    log(f"\n=== 汇总：词典条目 {total} | 命中 {grand_matched} | 未命中 {grand_unmatched} ===")
-    if grand_unmatched:
-        log("提示：未命中的条目不会破坏原文件，但对应英文会保留，需更新词典后重跑。")
-    if manifest_path and not dry_run:
+            if not os.path.isfile(path):
+                failures.append(f"{tgt}: 文件不存在")
+                continue
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    src = handle.read()
+                original = src.encode("utf-8")
+                mode = os.stat(path).st_mode
+            except OSError as error:
+                failures.append(f"{tgt}: 读取失败：{error}")
+                continue
+            new_text, matched, unmatched = apply_entries(src, entries)
+            log(f"\n■ {tgt}  ({len(src)} → {len(new_text)} 字节)")
+            log(f"  词典条目 {len(entries)} | 命中 {len(matched)} | 未命中 {len(unmatched)}")
+            if unmatched:
+                log("  ⚠ 未命中（可能该串在新版已被改名/移除，建议核对）：")
+                for item in unmatched[:40]:
+                    log(f"     - {item!r}")
+                if len(unmatched) > 40:
+                    log(f"     ... 其余 {len(unmatched) - 40} 条省略")
+            plan.append({
+                "target": tgt, "path": path, "original": original,
+                "mode": mode, "new": new_text.encode("utf-8"),
+                "matched": len(matched), "unmatched": len(unmatched),
+            })
+
+        if failures:
+            log("\n✗ [错误] 预检失败，未写入任何文件")
+        elif dry_run:
+            applied = 0
+        else:
+            applied = 0
+            temps = {}
+            backups = {}
+            replaced = []
+            try:
+                # 1) 先创建所有临时文件，不触碰目标
+                for item in plan:
+                    directory = os.path.dirname(item["path"]) or "."
+                    fd, temp_path = tempfile.mkstemp(
+                        prefix="." + os.path.basename(item["path"]) + ".zhtool-",
+                        suffix=".tmp", dir=directory)
+                    try:
+                        with os.fdopen(fd, "wb") as handle:
+                            handle.write(item["new"])
+                            handle.flush()
+                            os.fsync(handle.fileno())
+                        os.chmod(temp_path, item["mode"])
+                    except BaseException:
+                        try:
+                            os.unlink(temp_path)
+                        except OSError:
+                            pass
+                        raise
+                    temps[item["target"]] = temp_path
+
+                # 2) 备份只补齐缺失项，绝不覆盖既有 .bak
+                for item in plan:
+                    backup = item["path"] + ".bak"
+                    backups[item["target"]] = backup
+                    if not os.path.exists(backup):
+                        _atomic_write_bytes(backup, item["original"], item["mode"])
+                        log(f"  ✓ 已备份原文件 -> {backup}")
+
+                # 3) 逐个原子替换；任何失败均回滚已替换文件
+                for item in plan:
+                    temp_path = temps.pop(item["target"], None)
+                    if temp_path is None:
+                        raise OSError(f"{item['target']} 临时文件缺失")
+                    os.replace(temp_path, item["path"])
+                    replaced.append(item)
+                    log(f"  ✓ 已写入汉化后的 {item['target']}")
+                    applied += 1
+            except BaseException as error:
+                log(f"\n✗ [错误] 写入失败：{error}")
+                failures.append(f"写入失败：{error}")
+                rollback_errors = []
+                for item in reversed(replaced):
+                    try:
+                        _atomic_write_bytes(item["path"], item["original"], item["mode"])
+                    except OSError as rollback_error:
+                        rollback_errors.append(f"{item['target']}: {rollback_error}")
+                for temp_path in temps.values():
+                    try:
+                        if os.path.exists(temp_path):
+                            os.unlink(temp_path)
+                    except OSError:
+                        pass
+                if rollback_errors:
+                    log("  ⚠ 回滚未完成：" + "; ".join(rollback_errors))
+                    log("  ⚠ 请检查 .bak 并手动恢复")
+                elif replaced:
+                    log("  ↩ 已回滚本次已写入的文件，原文件内容保持不变")
+                applied = 0
+
+            if not failures:
+                for target, path in app_files:
+                    manifest["files"][target] = sha256_of(path)
+            else:
+                applied = 0
+                manifest["files"] = {}
+
+        if not dry_run and applied == 0 and not failures:
+            failures.append("没有任何文件被成功写入")
+
+    manifest["ok"] = not failures
+    if failures:
+        for failure in failures:
+            log("✗ [错误] " + failure)
+        log("结论：应用未完全成功 ✗")
+    else:
+        log("\n=== 汇总：词典条目 %d | 命中 %d | 未命中 %d ===" % (
+            total,
+            sum(item["matched"] for item in locals().get("plan", [])),
+            sum(item["unmatched"] for item in locals().get("plan", []))))
+        log("结论：应用完成 ✓")
+    if manifest_path and not dry_run and manifest["ok"]:
         if save_manifest(manifest_path, manifest):
             log(f"  ✓ 已写入完整性清单 -> {manifest_path}")
         else:
             log(f"  ⚠ 完整性清单写入失败（不影响汉化结果）-> {manifest_path}")
     return manifest
-
 
 # --------------------------------------------------------------------------
 # 扫描候选串（用于发现新版新增/变更 UI 文本）
@@ -322,101 +430,142 @@ def cmd_verify(args):
     files = resolve_app_files(appdir, args.main, args.renderer)
     if not files:
         sys.stderr.write("未找到 main.js / renderer.js，请用 --appdir 指定安装目录。\n")
-        sys.exit(2)
+        return 2
     manifest_path = args.manifest
     if manifest_path is None and appdir:
         manifest_path = os.path.join(appdir, MANIFEST_NAME)
     manifest = load_manifest(manifest_path)
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("files"), dict):
+        print(f"目标目录：{appdir or '(显式指定文件)'}")
+        for target, path in files:
+            if os.path.isfile(path):
+                print(f"{target}: sha256={sha256_of(path)}")
+            else:
+                print(f"{target}: 文件不存在 -> {path}")
+        print(f"\n✗ 未找到可对比的完整性清单：{manifest_path or '(未指定)'}")
+        print("请先执行一次 apply 生成清单，再运行 verify。")
+        return 1
+
     ok_all = True
-    for t, p in files:
-        if not os.path.isfile(p):
-            print(f"{t}: 文件不存在 -> {p}")
+    for target, path in files:
+        if not os.path.isfile(path):
+            print(f"{target}: 文件不存在 -> {path}")
             ok_all = False
             continue
-        h = sha256_of(p)
-        print(f"{t}: sha256={h[:16]}…（完整 {h}）")
-        if manifest and "files" in manifest and t in manifest["files"]:
-            if manifest["files"][t] == h:
-                print("   ✔ 与清单一致（已打补丁且未被改动）")
-            else:
-                print("   ⚠ 与清单不一致：可能 GD 已自动更新，或文件被修改——建议重新 apply。")
-                ok_all = False
+        digest = sha256_of(path)
+        print(f"{target}: sha256={digest}")
+        expected = manifest["files"].get(target)
+        if expected is None:
+            print("   ⚠ 清单中没有该文件，无法校验")
+            ok_all = False
+        elif expected == digest:
+            print("   ✔ 与清单一致（已打补丁且未被改动）")
         else:
-            print("   （无清单可对比；先跑一次 apply 生成清单）")
-    print("\n结论：", "全部一致 ✔" if ok_all else "存在差异，需关注 ⚠")
+            print("   ⚠ 与清单不一致：可能 GD 已自动更新，或文件被修改——建议重新 apply。")
+            ok_all = False
+    print("\n结论：", "全部一致 ✔" if ok_all else "存在差异或无法校验 ✗")
+    return 0 if ok_all else 1
+
+
+def _watch_snapshot(files):
+    return {target: (sha256_of(path) if os.path.isfile(path) else None)
+            for target, path in files}
+
+
+def _wait_for_stable(files, seconds):
+    """等待文件停止变化；返回 False 表示始终不稳定或文件消失。"""
+    previous = _watch_snapshot(files)
+    stable_since = time.time()
+    while time.time() - stable_since < seconds:
+        time.sleep(0.25)
+        current = _watch_snapshot(files)
+        if current != previous:
+            previous = current
+            stable_since = time.time()
+        if any(value is None for value in current.values()):
+            return False
+    return True
+
+
+def _resolve_watch_targets(appdir, args):
+    """每轮重新发现安装，跟随 app-X.Y.Z 目录改名。"""
+    if args.main or args.renderer:
+        return appdir, resolve_app_files(appdir, args.main, args.renderer)
+    if appdir:
+        latest = zhpaths.latest_sibling_appdir(appdir)
+        if latest and latest != appdir:
+            print(f"[发现] 安装目录已变更：{appdir} -> {latest}")
+            appdir = latest
+    files = resolve_app_files(appdir, None, None)
+    if len(files) < len(KNOWN_TARGETS):
+        detected = autodetect_appdir()
+        if detected and detected != appdir:
+            print(f"[发现] 已切换安装目录：{appdir or '(未指定)'} -> {detected}")
+            appdir = detected
+            files = resolve_app_files(appdir, None, None)
+    return appdir, files
 
 
 def cmd_watch(args):
     appdir = args.appdir or autodetect_appdir()
-    files = resolve_app_files(appdir, args.main, args.renderer)
+    files = resolve_app_files(appdir, None, None)
     if not files:
-        sys.stderr.write("未找到 main.js / renderer.js，请用 --appdir 指定安装目录。\n")
-        sys.exit(2)
-    manifest_path = args.manifest or (os.path.join(appdir, MANIFEST_NAME) if appdir else None)
+        sys.stderr.write("未找到 main.js / renderer.js；将持续尝试自动检测。\n")
+    manifest_path = args.manifest
+    if manifest_path is None and appdir:
+        manifest_path = os.path.join(appdir, MANIFEST_NAME)
     manifest = load_manifest(manifest_path) or {"version": 1, "zh": [], "files": {}}
-    print(f"▶ 开始监控：{appdir}")
+    print(f"▶ 开始监控：{appdir or '(自动检测)'}")
     print(f"  间隔 {args.interval}s｜词典：{', '.join(args.zh)}｜Ctrl+C 退出")
     runs = 0
     try:
         while True:
             runs += 1
-            changed = []
-            for t, p in files:
-                if not os.path.isfile(p):
-                    changed.append(t)
+            try:
+                previous_appdir = appdir
+                appdir, files = _resolve_watch_targets(appdir, args)
+                if len(files) < len(KNOWN_TARGETS):
+                    print(f"[{time.strftime('%H:%M:%S')}] 未找到完整的 main.js / renderer.js，等待重试…")
+                    time.sleep(max(1, min(args.interval, 10)))
                     continue
-                if manifest.get("files", {}).get(t) != sha256_of(p):
-                    changed.append(t)
-            if changed:
-                print(f"[{time.strftime('%H:%M:%S')}] 检测到 {', '.join(changed)} 变动，重新打补丁…")
-                manifest = apply_to_files(files, args.zh, False, manifest_path)
-            elif runs == 1:
-                print(f"[{time.strftime('%H:%M:%S')}] 当前已是最新汉化状态，开始监控文件变化…")
-            time.sleep(args.interval)
+                if appdir != previous_appdir and args.manifest is None:
+                    manifest_path = os.path.join(appdir, MANIFEST_NAME)
+                    manifest = load_manifest(manifest_path) or {
+                        "version": 1, "zh": [], "files": {}}
+                recorded = manifest.get("files", {})
+                changed = [target for target, path in files
+                           if recorded.get(target) != sha256_of(path)]
+                if changed:
+                    print(f"[{time.strftime('%H:%M:%S')}] 检测到 {', '.join(changed)} 变动，"
+                          f"等待文件稳定…")
+                    if not _wait_for_stable(files, max(1, args.stable_seconds)):
+                        print("  · 文件仍在变化或已消失，稍后重试")
+                        time.sleep(max(1, min(args.interval, 10)))
+                        continue
+                    manifest = apply_to_files(files, args.zh, False, manifest_path)
+                    if manifest.get("ok"):
+                        print("  ✓ 已重新应用汉化")
+                    else:
+                        print(f"  ✗ 重新应用未完全成功：{'; '.join(manifest.get('failures') or [])}")
+                elif runs == 1:
+                    print(f"[{time.strftime('%H:%M:%S')}] 当前已是最新汉化状态，开始监控文件变化…")
+            except Exception as error:  # noqa: BLE001
+                print(f"[{time.strftime('%H:%M:%S')}] 监控出错，稍后重试：{error}")
+            time.sleep(max(1, args.interval))
     except KeyboardInterrupt:
         print("\n■ 已停止监控。")
+    return 0
 
 
 # --------------------------------------------------------------------------
-# 自动定位 GitHub Desktop 安装目录
+# 自动定位 GitHub Desktop 安装目录（与 GUI/zhcore 共用 zhpaths）
 # --------------------------------------------------------------------------
 def autodetect_appdir():
-    candidates = []
-    local = os.environ.get("LOCALAPPDATA")
-    if local:
-        base = os.path.join(local, "GitHubDesktop")
-        if os.path.isdir(base):
-            candidates += glob.glob(os.path.join(base, "app-*", "resources", "app"))
-    mac_path = "/Applications/GitHub Desktop.app/Contents/Resources/app"
-    if os.path.isdir(mac_path):
-        candidates.append(mac_path)
-    linux_path = os.path.expanduser("~/.config/GitHub Desktop/resources/app")
-    if os.path.isdir(linux_path):
-        candidates.append(linux_path)
-    opt_path = "/opt/github-desktop/resources/app"
-    if os.path.isdir(opt_path):
-        candidates.append(opt_path)
-    for c in candidates:
-        if os.path.isfile(os.path.join(c, "renderer.js")):
-            return c
-    return None
+    return zhpaths.autodetect_appdir()
 
 
 def resolve_app_files(appdir, main_path, renderer_path):
-    files = []
-    if main_path:
-        files.append(("main.js", main_path))
-    elif appdir:
-        p = os.path.join(appdir, "main.js")
-        if os.path.isfile(p):
-            files.append(("main.js", p))
-    if renderer_path:
-        files.append(("renderer.js", renderer_path))
-    elif appdir:
-        p = os.path.join(appdir, "renderer.js")
-        if os.path.isfile(p):
-            files.append(("renderer.js", p))
-    return files
+    return zhpaths.resolve_app_files(appdir, main_path, renderer_path)
 
 
 # --------------------------------------------------------------------------
@@ -455,6 +604,8 @@ def main():
     pw.add_argument("--renderer", help="显式指定 renderer.js 路径")
     pw.add_argument("--zh", nargs="+", required=True, help="一份或多份 .zh 词典")
     pw.add_argument("--interval", type=int, default=60, help="轮询间隔秒数（默认 60）")
+    pw.add_argument("--stable-seconds", type=float, default=2.0,
+                    help="检测到变化后等待文件稳定的秒数（默认 2）")
     pw.add_argument("--manifest", help="清单路径（默认 appdir 下的 .zhtool_manifest.json）")
 
     args = ap.parse_args()
@@ -467,28 +618,33 @@ def main():
                 sys.stderr.write("指定的 --main / --renderer 路径不存在，请检查。\n")
             else:
                 sys.stderr.write("未找到 main.js / renderer.js，请用 --appdir 显式指定安装目录。\n")
-            sys.exit(2)
+            return 2
         print(f"目标目录：{appdir or '(显式指定文件)'}")
         print(f"待处理文件：{', '.join(p for _, p in files)}")
-        for t, p in files:
-            print(f"  发现 {t} -> {p}")
+        for target, path in files:
+            print(f"  发现 {target} -> {path}")
         manifest_path = args.manifest
         if manifest_path is None and appdir and not args.dry_run:
             manifest_path = os.path.join(appdir, MANIFEST_NAME)
-        apply_to_files(files, args.zh, args.dry_run, manifest_path)
+        report = apply_to_files(files, args.zh, args.dry_run, manifest_path)
+        return 0 if report.get("ok") else 1
 
-    elif args.cmd == "scan":
+    if args.cmd == "scan":
         cmd_scan(args)
+        return 0
 
-    elif args.cmd == "merge":
+    if args.cmd == "merge":
         cmd_merge(args)
+        return 0
 
-    elif args.cmd == "verify":
-        cmd_verify(args)
+    if args.cmd == "verify":
+        return cmd_verify(args)
 
-    elif args.cmd == "watch":
-        cmd_watch(args)
+    if args.cmd == "watch":
+        return cmd_watch(args)
+
+    return 2
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

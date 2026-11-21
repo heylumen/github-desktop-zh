@@ -1,0 +1,13 @@
+[run]
+source = gui
+omit =
+    gui/build_env/*
+    gui/build/*
+    gui/dist/*
+    gui/__pycache__/*
+
+[report]
+fail_under = 68
+precision = 1
+show_missing = True
+skip_empty = True

@@ -1,41 +1,84 @@
 @echo off
 chcp 65001 >nul
 rem =====================================================================
-rem  GitHub Desktop 汉化工具 — 单文件 EXE 打包脚本
-rem  依赖：官方 Python 3.8+（需 pip install pyside6，即 Qt6）
-rem  产物：dist\github-desktop-zh-1.0.2.exe  （双击即用，不依赖任何运行环境）
-rem  目标平台：Windows 10 / 11（官方 GitHub Desktop 已不支持 Windows 7）
+rem  GitHub Desktop 汉化工具 — 单文件 EXE 打包脚本（可复现构建）
+rem  依赖：Python 3.10–3.13（PySide6 6.11 支持范围）
+rem  产物：dist\github-desktop-zh-1.0.3.exe
 rem =====================================================================
 setlocal
+
+set "HERE=%~dp0"
+set "REPO=%HERE%.."
 
 rem 1) 选择 Python 解释器（优先 py 启动器，否则用 python）
 where py >nul 2>nul && set "PY=py -3" || set "PY=python"
 
-echo [1/4] 准备构建虚拟环境（隔离依赖，不污染系统）...
+echo [1/5] 准备构建虚拟环境...
 if not exist build_env (
     %PY% -m venv build_env
+    if errorlevel 1 goto :fail
 )
 call build_env\Scripts\activate.bat
+if errorlevel 1 goto :fail
 
-echo [2/4] 安装 PyInstaller 与 PySide6（Qt6，不升级以保持版本锁定）...
-python -m pip install --upgrade pip >nul
-python -m pip install pyinstaller pyside6
-
-echo [3/4] 编译为单文件 EXE（GUI 版，隐藏控制台；体积优化见仓库根 github-desktop-zh-1.0.2.spec）...
-python -m PyInstaller --clean --noconfirm --distpath "dist" --workpath "build" "..\github-desktop-zh-1.0.2.spec"
-
-rem 如需同时打包命令行版 EXE，取消下行注释：
-rem python -m PyInstaller --onefile --name github-desktop-zh-1.0.2-cli --add-data "..\dictionaries;dictionaries" cli.py
-
-echo [4/4] 完成。产物位于：dist\github-desktop-zh-1.0.2.exe
-if exist "dist\github-desktop-zh-1.0.2.exe" (
-    echo 文件大小：
-    for %%F in ("dist\github-desktop-zh-1.0.2.exe") do echo   %%~zF 字节
+python -c "import sys; raise SystemExit(0 if (3,10) <= sys.version_info[:2] < (3,15) else 1)"
+if errorlevel 1 (
+    echo [错误] 当前 Python 版本不受支持：需要 Python 3.10 到 3.13（PySide6 6.11 支持范围）
+    goto :fail
 )
+
+echo [2/5] 安装锁定版本的 PyInstaller 与 PySide6...
+python -m pip install --disable-pip-version-check --upgrade pip >nul
+python -m pip install --disable-pip-version-check -r requirements-build.txt -c constraints-build.txt
+if errorlevel 1 goto :fail
+python -m pip check
+if errorlevel 1 goto :fail
+
+echo [3/5] 校验字典清单与（可选）JavaScript 语法...
+pushd "%REPO%"
+python scripts\check_dictionaries.py
+set "DICT_RC=%ERRORLEVEL%"
+popd
+if not "%DICT_RC%"=="0" goto :fail
+python "%REPO%\scripts\check_privacy.py"
+if errorlevel 1 goto :fail
+python "%REPO%\scripts\check_self_methods.py"
+if errorlevel 1 goto :fail
+python "%REPO%\scripts\check_consistency.py" --skip-build-info
+if errorlevel 1 goto :fail
+python "%REPO%\scripts\check_contrast.py"
+if errorlevel 1 goto :fail
+python "%REPO%\scripts\check_visual.py"
+if errorlevel 1 goto :fail
+echo [4/5] 编译为单文件 EXE...
+where upx >nul 2>nul
+if errorlevel 1 (
+    echo   注意：未找到 UPX，spec 的 upx=True 将不产生压缩。
+) else (
+    echo   已找到 UPX，将按 spec 压缩二进制。
+)
+python -m PyInstaller --clean --noconfirm --distpath "dist" --workpath "build" "%REPO%\github-desktop-zh-1.0.3.spec"
+if errorlevel 1 goto :fail
+
+echo [5/5] 校验归档并生成发布散列...
+python "%REPO%\scripts\verify_archive.py" "dist\github-desktop-zh-1.0.3.exe" --version 1.0.3
+if errorlevel 1 goto :fail
+python "%REPO%\scripts\smoke_exe.py" "dist\github-desktop-zh-1.0.3.exe"
+if errorlevel 1 goto :fail
+python "%REPO%\scripts\build_release.py" --exe "dist\github-desktop-zh-1.0.3.exe"
+if errorlevel 1 goto :fail
+python "%REPO%\scripts\check_consistency.py"
+if errorlevel 1 goto :fail
+
 echo.
-echo 提示：
-echo   - 若写入 GitHub Desktop 安装目录（如 Program Files）时报权限错误，
-echo     请以管理员身份运行本 EXE。默认安装路径 %LOCALAPPDATA%\GitHubDesktop 无需管理员。
-echo   - 构建临时文件在 build_env/ build/ *.spec，可安全删除。
+echo 构建完成：%HERE%dist\github-desktop-zh-1.0.3.exe
 endlocal
 pause
+exit /b 0
+
+:fail
+echo.
+echo [失败] 构建未完成，请检查上方错误信息后重试。
+endlocal
+pause
+exit /b 1

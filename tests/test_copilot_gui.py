@@ -10,10 +10,16 @@ ROOT = Path(__file__).resolve().parent.parent
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(ROOT / "gui"))
 try:
-    import app as ui
+    from PySide6.QtCore import QSettings
     from PySide6.QtGui import QCloseEvent
+    import PySide6  # noqa: F401
 except ImportError:
     ui = None
+    QCloseEvent = None
+    QSettings = None
+else:
+    # app 本身的导入错误必须暴露为测试失败，不能被 skip 掩盖
+    import app as ui
 
 
 @unittest.skipIf(ui is None, "PySide6 is required for GUI checks")
@@ -21,6 +27,11 @@ class GlobalPromptGuiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.qapp = ui.QApplication.instance() or ui.QApplication([])
+        QSettings.setDefaultFormat(QSettings.IniFormat)
+        settings = ROOT / ".work" / "test-settings"
+        settings.mkdir(parents=True, exist_ok=True)
+        QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, str(settings))
+        QSettings.setPath(QSettings.IniFormat, QSettings.SystemScope, str(settings))
 
     def setUp(self):
         work = ROOT / ".work"
@@ -33,8 +44,7 @@ class GlobalPromptGuiTests(unittest.TestCase):
         self.environment.start()
         self.addCleanup(self.environment.stop)
         self.patches = [
-            mock.patch.object(ui.App, "_load_theme", return_value="light"),
-            mock.patch.object(ui.App, "_save_theme"),
+            mock.patch.object(ui.App, "_detect_system_theme", return_value="light"),
             mock.patch.object(ui.App, "_refresh_path"),
             mock.patch.object(ui.App, "_refresh_update_pill"),
         ]

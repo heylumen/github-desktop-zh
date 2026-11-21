@@ -11,6 +11,7 @@ venv/
 new-strings.zh
 *.zh.tmp
 .zhtool_manifest.json
+local-dictionaries/
 
 # 系统
 .DS_Store
@@ -21,12 +22,20 @@ Thumbs.db
 .env.*
 !.env.example
 
-# PyInstaller 构建产物（gui/）
+# PyInstaller 构建产物（gui/ 与仓库根误落点）
 gui/build_env/
 gui/build/
 gui/dist/
 gui/*.spec
 gui/*.log
+/dist/
+/build/
+
+# 测试 / 覆盖率产物
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
 
 # 上游原始仓库 dump（仅本地参考，不入库；汉化内容已提取到 dictionaries/）
 GitHub_Desktop_Simplified_Chinese/

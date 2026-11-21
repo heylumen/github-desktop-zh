@@ -19,14 +19,16 @@ END_MARKER = "<!-- github-desktop-zh:commit-message:end -->"
 _MARKER_PREFIX = "<!-- github-desktop-zh:commit-message:"
 MISSING_REVISION = "missing"
 
-DEFAULT_COMMIT_INSTRUCTIONS = """始终使用简体中文生成git commit message。
-严格按照以下格式输出: <type>: <描述>。
-只允许使用以下类型:feat、fix、docs、refactor、perf、dx、workflow、types、wip、test、build、ci、chore、deps、release。
-根据本次暂存改动的主要目的，选择最合适的一个type，不要罗列多个。
-不要输出英文，不要附加解释，不要输出列表，只输出最终的commit message。
-描述要简洁、准确、自然，避免'更新代码'、'调整内容'这类空话。
-内容要条理清晰，用序号的方式说明改动内容，每条要换行。
+DEFAULT_COMMIT_INSTRUCTIONS = """始终使用简体中文生成 git commit message。
+第一行严格使用格式：<type>: <描述>
+如改动较多，可在第一行后空一行，再用「1. 2. 3.」逐条说明，每条一行，最多 4 条。
+只允许使用以下类型：feat、fix、docs、refactor、perf、dx、workflow、types、wip、test、build、ci、chore、deps、release。
+根据本次暂存改动的主要目的，选择最合适的一个 type，不要罗列多个。
+不要输出英文解释或其他额外文字，只输出最终的 commit message。
+描述要简洁、准确、自然，避免「更新代码」「调整内容」这类空话。
 """.rstrip("\n")
+
+MAX_BACKUPS = 5
 
 
 class CopilotConfigConflictError(ValueError):
@@ -139,6 +141,23 @@ def _write_temporary(directory, prefix, content):
     return path
 
 
+def _prune_backups(directory, name, keep=MAX_BACKUPS):
+    """只保留最近的若干备份，避免每次保存都无限堆积全局指令副本。"""
+    try:
+        backups = sorted(
+            (path for path in Path(directory).glob(name + ".bak-*") if path.is_file()),
+            key=lambda path: (path.stat().st_mtime, path.name),
+            reverse=True,
+        )
+    except OSError:
+        return
+    for path in backups[max(1, int(keep)):]:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
 def save_global_commit_instructions(prompt, expected_revision=None):
     """Atomically update only our block and back up any existing file first.
 
@@ -197,6 +216,8 @@ def save_global_commit_instructions(prompt, expected_revision=None):
         _assert_snapshot(path, exists, original)
         os.replace(str(temporary), str(path))
         temporary = None
+        if backup is not None:
+            _prune_backups(path.parent, path.name)
     except CopilotConfigConflictError:
         raise
     except OSError as error:

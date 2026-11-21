@@ -1,0 +1,296 @@
+{
+  "schema": 1,
+  "generated_at": "2026-11-21T04:47:59+00:00",
+  "targets": [
+    "main.js",
+    "renderer.js"
+  ],
+  "versions": {
+    "3.5.0": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "0b6e04ac8d6b25b884fb92c3a9053435572c1f3116f3335fde923a29396d0db0",
+          "size": 245494
+        },
+        "renderer.js": {
+          "sha256": "05972b3f44d2ba88b7341979327243446d4ff322fe8241be26c36e0b32d3972c",
+          "size": 2325204
+        }
+      }
+    },
+    "3.5.1": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "710d0b5e8798045299dd36d552a83bc8f201f258a06c8a30ada59c3e49546a52",
+          "size": 245661
+        },
+        "renderer.js": {
+          "sha256": "e5ec9770f0d6c9375df9b990a4ffecc3619b9f71e5f3b472decde114a7105a60",
+          "size": 2337433
+        }
+      }
+    },
+    "3.5.2": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "42f8a2949783e62291927574a553c394f3497b4c1dc9d21d38b97ea46fc6aad2",
+          "size": 245661
+        },
+        "renderer.js": {
+          "sha256": "4f0272d81a39fa68743e599d0a0945e9f9b15a688513cd9fe79e074d2d27c27e",
+          "size": 2337531
+        }
+      }
+    },
+    "3.5.3": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "ec8497105faccc1b8e404feb81991ea6a42d2fcc1823571f2ea8344ea8af7e13",
+          "size": 245661
+        },
+        "renderer.js": {
+          "sha256": "779a72fa132e8dce88682412dbed1803d6092a2e93037b73e3741f0085b2e375",
+          "size": 2345114
+        }
+      }
+    },
+    "3.5.4": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "7ee3bc637da9e2f449265232e629e506478d43d73674581016bf872ddd1c1fec",
+          "size": 245661
+        },
+        "renderer.js": {
+          "sha256": "9f9bd7caf8945428cc4d0fd4d7af852960f96e6130cd2d89665db1c2ca93cb14",
+          "size": 2350057
+        }
+      }
+    },
+    "3.5.5": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "a4508dc59c49907ddac32e3471e8e8bbe60c6a1b534eb9bdc5238b96eb7e1336",
+          "size": 245673
+        },
+        "renderer.js": {
+          "sha256": "bb43a93e04c6b08a83df349730c8bff36630eedab95e48dd90a37b2b6b9c0f2e",
+          "size": 2353910
+        }
+      }
+    },
+    "3.5.6": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "090e193c3342a72af7f94ba55f92e4382fc32d8f60a177e65032a3a45cdc8f9e",
+          "size": 245820
+        },
+        "renderer.js": {
+          "sha256": "399edf6399edda8f362ffbe8cde208ff4381b90aca436919f2709df43a0eebea",
+          "size": 2673726
+        }
+      }
+    },
+    "3.5.7": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "090e193c3342a72af7f94ba55f92e4382fc32d8f60a177e65032a3a45cdc8f9e",
+          "size": 245820
+        },
+        "renderer.js": {
+          "sha256": "10cefbcebde7e35648c4d4595a3dc9b6db9cbe85704034185166458cb960fe40",
+          "size": 2673726
+        }
+      }
+    },
+    "3.5.8": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "ca7240fb2e870773a64eaba0001b208963ae8c2c42d0a33f2520bfa966772445",
+          "size": 241696
+        },
+        "renderer.js": {
+          "sha256": "6ff045d7553adfb3e360911ca092785f749c1179a15ba520e2da2ebf8270570b",
+          "size": 2750631
+        }
+      }
+    },
+    "3.5.9": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "ca7240fb2e870773a64eaba0001b208963ae8c2c42d0a33f2520bfa966772445",
+          "size": 241696
+        },
+        "renderer.js": {
+          "sha256": "1ce2a4b568a1a362a9cbeee8cf7655fe29d02c380189c3b62da96fd232f14bac",
+          "size": 2750631
+        }
+      }
+    },
+    "3.5.10": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "b9743062336472c81e9ce7f3a31a69580ed655d5c7f1e11698950513e23537ec",
+          "size": 241692
+        },
+        "renderer.js": {
+          "sha256": "c2561f18be3c983b097df923317ebc7bf882752c8fc0ed4eeb4d3bc344a19cdb",
+          "size": 2751511
+        }
+      }
+    },
+    "3.5.11": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "b9743062336472c81e9ce7f3a31a69580ed655d5c7f1e11698950513e23537ec",
+          "size": 241692
+        },
+        "renderer.js": {
+          "sha256": "efe736e28c8c1449480c421a0a19f77a2ca2e611ce72c0785fc56894b4216403",
+          "size": 2751511
+        }
+      }
+    },
+    "3.5.12": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "b9743062336472c81e9ce7f3a31a69580ed655d5c7f1e11698950513e23537ec",
+          "size": 241692
+        },
+        "renderer.js": {
+          "sha256": "77855b0f04ec4970879bcc38bcb257a6ba438130a19fce6c903d50f3c1a9660d",
+          "size": 2751511
+        }
+      }
+    },
+    "3.6.0": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "9cfcdf4736170864665d324e9c0ce26b048ea5d7d6a12a36a0895e8fac002a0d",
+          "size": 240373
+        },
+        "renderer.js": {
+          "sha256": "71373b3e0327f6867a9b8fb3ed3d4bfa8e76af4d52bf589eafc7d15ab56e1501",
+          "size": 2919208
+        }
+      }
+    },
+    "3.6.1": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "4d0fcc321fa2bfb31c21d4998ad278339201dfc1261f94ba969bfbe234a881b5",
+          "size": 240373
+        },
+        "renderer.js": {
+          "sha256": "7b3704b701a5ee6d52fc622b70c17829c311d03ebcdd0d7a8b27cd60efa57095",
+          "size": 2919208
+        }
+      }
+    },
+    "3.6.2": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "27578fc83ae501306d31a0fa82000f8867911f87c58c0f0b1fb14cc3aaaab5b6",
+          "size": 240373
+        },
+        "renderer.js": {
+          "sha256": "5742673b8d9b4471839b8d7cf6b181a8d9966829ac2b67bdbf25343eee3612e7",
+          "size": 2919208
+        }
+      }
+    },
+    "3.6.3": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "f0b37248fbc2c02565a90427e302f3f0979a563076a01ee37292252db852ec91",
+          "size": 240373
+        },
+        "renderer.js": {
+          "sha256": "e115aebdbb1e8143539e44799501bea4ac971b969d5028788151ce7c9e11ba67",
+          "size": 2919208
+        }
+      }
+    },
+    "3.6.4": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "15eca7a13a36a4d015fbfc3e816fc194414bdce9f289fbf0d73f9ac17f19f6e1",
+          "size": 240373
+        },
+        "renderer.js": {
+          "sha256": "34c6023dbf2a18d0585c735f1246ec3ae69b69b94f7a3f4126b7211c5801fcd8",
+          "size": 2919208
+        }
+      }
+    },
+    "3.6.5": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "44b623b372bf52b96667b5ce23daaa1873ab1ef652ac3836713a3cdca0977fea",
+          "size": 240371
+        },
+        "renderer.js": {
+          "sha256": "8d172503521d8122636927ac7abe2cbee1ab035f77f37301b7aa206c240f3526",
+          "size": 2919206
+        }
+      }
+    },
+    "3.6.6": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "1569a03ad03285d54e3fb6cf7658741fabff48ec0e962ccc1c6ebbf7c19ab05f",
+          "size": 240371
+        },
+        "renderer.js": {
+          "sha256": "d2feb0f342bb3a2f62c9f04c5594ada96978af1ee5e918d391ebe3a89e135184",
+          "size": 2919206
+        }
+      }
+    },
+    "3.6.7": {
+      "source": "upstream-743859910",
+      "files": {
+        "main.js": {
+          "sha256": "beb126926de5a1b90ee0f295ab2d912773e835b1f131d3ac3bdfce0164aa5d7a",
+          "size": 242015
+        },
+        "renderer.js": {
+          "sha256": "424687f37f52a2f53d75973e31ac3be3f7b5590786e7b1fe2e8927ca93e42991",
+          "size": 3162075
+        }
+      }
+    },
+    "3.6.10": {
+      "source": "official-adaptation",
+      "files": {
+        "main.js": {
+          "sha256": "e1ecf9d0d5b2d848253874349d0ee7a8dadecf69fb9294c617e068341cca8e0d",
+          "size": 235384
+        },
+        "renderer.js": {
+          "sha256": "5ced5baccf49bd3d1f0f2e243799b49ff0cbd527da485b397396c0c1821c0494",
+          "size": 3308427
+        }
+      }
+    }
+  }
+}

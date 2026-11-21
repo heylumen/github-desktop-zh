@@ -6,11 +6,13 @@ Only writes repository dictionary files, never an installed GitHub Desktop.
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -91,16 +93,57 @@ def main():
                 }
                 (work / (target + ".LICENSE.txt")).write_bytes(package.read(base + target + ".LICENSE.txt"))
         # Both files must validate before any dictionary file is replaced.
-        args.output.mkdir(parents=True, exist_ok=True)
-        for target in ORIGINAL_SHA256:
-            for name in (target, target + ".LICENSE.txt"):
-                shutil.copyfile(work / name, args.output / name)
-        shutil.copyfile(ROOT / "licenses" / "github-desktop-LICENSE", args.output / "LICENSE.github-desktop")
-        shutil.copyfile(ROOT / "LICENSE", args.output / "LICENSE.translations")
-        (args.output / "provenance.json").write_text(
-            json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=args.output.name + ".new-",
+                                        dir=str(args.output.parent)))
+        backup = None
+        try:
+            for target in ORIGINAL_SHA256:
+                for name in (target, target + ".LICENSE.txt"):
+                    shutil.copyfile(work / name, staging / name)
+            shutil.copyfile(ROOT / "licenses" / "github-desktop-LICENSE",
+                            staging / "LICENSE.github-desktop")
+            shutil.copyfile(ROOT / "LICENSE", staging / "LICENSE.translations")
+            (staging / "provenance.json").write_text(
+                json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8")
+
+            same = False
+            if args.output.is_dir():
+                existing = sorted(p.name for p in args.output.iterdir() if p.is_file())
+                produced = sorted(p.name for p in staging.iterdir() if p.is_file())
+                same = existing == produced and all(
+                    sha256(args.output / name) == sha256(staging / name)
+                    for name in produced)
+            if same:
+                shutil.rmtree(staging, ignore_errors=True)
+                print("字典内容未变化，保留现有文件：" + str(args.output))
+            else:
+                if args.output.is_dir():
+                    backup = args.output.with_name(
+                        args.output.name + ".bak-" + time.strftime("%Y%m%d-%H%M%S"))
+                    suffix = 1
+                    while backup.exists():
+                        backup = args.output.with_name(
+                            args.output.name + ".bak-" + time.strftime("%Y%m%d-%H%M%S")
+                            + "-" + str(suffix))
+                        suffix += 1
+                    os.replace(args.output, backup)
+                try:
+                    os.replace(staging, args.output)
+                except BaseException:
+                    if backup and backup.exists() and not args.output.exists():
+                        os.replace(backup, args.output)
+                    raise
+                staging = None
+                if backup:
+                    print("旧字典已备份：" + str(backup))
+        finally:
+            if staging is not None and Path(staging).is_dir():
+                shutil.rmtree(staging, ignore_errors=True)
     print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -235,6 +235,20 @@ class CopilotConfigTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), b"Edited during save\n")
         self.assertEqual(list(self.path.parent.glob(".copilot-instructions.md.tmp-*")), [])
 
+    def test_backups_are_pruned_to_limit(self):
+        self.write(b"existing\n")
+        for index in range(config.MAX_BACKUPS + 4):
+            result = config.save_global_commit_instructions(f"版本 {index}")
+            self.assertTrue(result["changed"])
+        backups = list(self.path.parent.glob("copilot-instructions.md.bak-*"))
+        self.assertEqual(len(backups), config.MAX_BACKUPS)
+
+    def test_default_prompt_has_single_consistent_output_format(self):
+        prompt = config.DEFAULT_COMMIT_INSTRUCTIONS
+        self.assertIn("<type>: <描述>", prompt)
+        self.assertNotIn("不要输出列表", prompt)
+        self.assertIn("最多 4 条", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

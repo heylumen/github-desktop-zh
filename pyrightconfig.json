@@ -1,0 +1,15 @@
+{
+  "include": ["gui", "zhpaths.py", "zhtool.py"],
+  "exclude": ["gui/build_env", "gui/build", "gui/dist", "**/__pycache__"],
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "reportUnknownParameterType": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownArgumentType": false,
+  "reportMissingParameterType": false,
+  "reportUnusedImport": false,
+  "reportUnusedVariable": false
+}

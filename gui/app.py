@@ -3,276 +3,61 @@
 """
 app.py — GitHub Desktop 汉化工具（Windows 版 GUI，PySide6 / Qt6）
 =====================================================================
-- 仅支持 Windows 10 / 11；仓库收录 3.5.0–3.6.7、3.6.10，EXE 默认打包最新 5 版。
+- 仅支持 Windows 10 / 11；仓库收录 3.5.0–3.6.7、3.6.10，EXE 默认打包最新 2 版。
 - 旧版采用上游 MIT 整文件补丁；3.6.10 为官方同版本底包的中文字符串适配，纯离线、不联网。
-- 设计系统：整体白色主题（默认亮色，可切暗色）+ 白色卡片 + 充足留白；侧栏底部分段切换。
+- 设计系统：明暗主题自动跟随 Windows；不透明中性表面 + 单一墨绿强调色；
+  高对比度交还系统调色板。详细规范见仓库根 DESIGN.md。
 
 构建：见同目录 build.bat
 """
+import json
 import os
 import sys
 import webbrowser
 
-from PySide6.QtCore import (
-    QEasingCurve, QPointF, QPropertyAnimation, QRectF, QSettings, QSize, Qt,
-    QThread, Property, Signal,
-)
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPixmap, QPen
+from PySide6.QtCore import QEvent, QSettings, QSize, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
-    QAbstractButton, QApplication, QButtonGroup, QComboBox, QFileDialog, QFrame,
-    QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
-    QMessageBox, QPushButton, QScrollArea, QSizePolicy, QStackedWidget,
-    QPlainTextEdit, QStatusBar, QVBoxLayout, QWidget,
+    QApplication, QButtonGroup, QFileDialog, QFrame, QHBoxLayout,
+    QSizePolicy,
+    QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
+    QMessageBox, QPushButton, QScrollArea, QStackedWidget, QPlainTextEdit,
+    QStatusBar, QVBoxLayout, QWidget,
 )
 
 import copilot_config
+import diagnostics
 import zhcore
+from product_meta import BUNDLED_DICTIONARY_LIMIT
+from theme import QSS_DARK, QSS_LIGHT, high_contrast_enabled
+from widgets import ComboBox, ResizeHandle, Switch, TitleBar, nav_icon as _nav_icon
 
 APP_TITLE = "GitHub Desktop 汉化工具"
-APP_VERSION = "1.0.2"
+# 打包归档校验读取该常量；必须与 product_meta.APP_VERSION 一致（check_consistency）。
+APP_VERSION = "1.0.3"
 PROJECT_URL = "https://github.com/heylumen/github-desktop-zh"
 DICT_URL = "https://github.com/743859910/GitHub_Desktop_Simplified_Chinese"
 SETTINGS_ORG = "github-desktop-zh"
 SETTINGS_APP = "app"
-
-
-# ============================================================ 配色与 QSS
-# Light / Dark 双主题。所有颜色严格对齐下方 token 常量（QSS_LIGHT / QSS_DARK）。
-
-QSS_LIGHT = """
-QMainWindow, QWidget { background-color: #ffffff; color: #111827;
-    font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
-    font-size: 13px; }
-
-/* 侧栏 */
-QWidget#Sidebar { background: #ffffff; border-right: 1px solid #e5e7eb; }
-QLabel#LogoBadge { background: #0d6b5e; color: #ffffff; border-radius: 8px;
-    font-size: 16px; font-weight: 700; min-width: 32px; max-width: 32px;
-    min-height: 32px; max-height: 32px; }
-QLabel#NavTitle { color: #111827; font-size: 13px; font-weight: 700; }
-QLabel#NavSub { color: #6b7280; font-size: 11px; }
-QPushButton#NavItem { background: transparent; color: #111827; border: none;
-    text-align: left; padding: 10px 14px; font-size: 13px; border-radius: 8px; }
-QPushButton#NavItem:hover { background: #f6f8fa; }
-QPushButton#NavActive { background: #eef1f4; color: #111827; border: none;
-    text-align: left; padding: 10px 14px; font-size: 13px; font-weight: 600;
-    border-radius: 8px; }
-QPushButton#NavActive:hover { background: #eef1f4; }
-QWidget#ThemeToggle { background: #f3f4f6; border-radius: 8px; }
-QPushButton#ThemeOpt { background: transparent; color: #6b7280; border: none;
-    padding: 6px 12px; font-size: 12px; border-radius: 6px; }
-QPushButton#ThemeOpt:checked { background: #ffffff; color: #111827;
-    border: 1px solid #e5e7eb; }
-
-/* 子页头 */
-QLabel#Eyebrow { color: #6b7280; font-size: 11px; font-weight: 600;
-    letter-spacing: 1px; }
-QLabel#PageTitle { color: #111827; font-size: 22px; font-weight: 700; }
-QLabel#PageSub { color: #6b7280; font-size: 12px; }
-QLabel#CardTitle { color: #111827; font-size: 14px; font-weight: 600; }
-QLabel#CardSub { color: #6b7280; font-size: 12px; }
-
-/* 卡片 */
-QFrame#Card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; }
-
-/* 提示框 */
-QFrame#TipBox { background: transparent; border: none; }
-QLabel#TipText { color: #6b7280; font-size: 12px; }
-
-/* 徽标 */
-QLabel#BadgeSuccess { background: #d1fae5; color: #065f46; border-radius: 999px;
-    padding: 3px 10px; font-size: 11px; font-weight: 600; }
-QLabel#BadgeWarn { background: #fef3c7; color: #92400e; border-radius: 999px;
-    padding: 3px 10px; font-size: 11px; font-weight: 600; }
-QLabel#BadgeNeutral { background: #f3f4f6; color: #6b7280; border-radius: 999px;
-    padding: 3px 10px; font-size: 11px; font-weight: 600; }
-QLabel#BadgeInfo { background: #dbeafe; color: #1e40af; border-radius: 999px;
-    padding: 3px 10px; font-size: 11px; font-weight: 600; }
-
-/* 按钮 */
-QPushButton#Primary { background: #0d6b5e; color: #ffffff; border: none;
-    border-radius: 8px; padding: 0 18px; font-size: 13px; font-weight: 600; }
-QPushButton#Primary:hover { background: #0a544a; }
-QPushButton#Primary:pressed { background: #08453c; }
-QPushButton#Primary:disabled { background: #a3c4bf; color: #ffffff; }
-QPushButton#Secondary { background: #ffffff; color: #111827; border: 1px solid #d1d5db;
-    border-radius: 8px; padding: 9px 18px; font-size: 13px; }
-QPushButton#Secondary:hover { border-color: #9ca3af; }
-QPushButton#Secondary:disabled { color: #9ca3af; background: #f3f4f6; }
-QPushButton#Ghost { background: transparent; color: #6b7280; border: none;
-    padding: 8px 14px; font-size: 13px; border-radius: 8px; }
-QPushButton#Ghost:hover { background: #f3f4f6; color: #111827; }
-QPushButton#Danger { background: #ffffff; color: #dc2626; border: 1px solid #dc2626;
-    border-radius: 8px; padding: 9px 18px; font-size: 13px; }
-QPushButton#Danger:hover { background: #fef2f2; }
-QPushButton#Danger:disabled { color: #fca5a5; border-color: #fca5a5; background: #ffffff; }
-
-/* 输入 */
-QLineEdit, QPlainTextEdit { background: #ffffff; border: 1px solid #d1d5db; border-radius: 8px;
-    padding: 8px 12px; font-size: 13px; color: #111827;
-    selection-background-color: #cbd5e1; selection-color: #111827; }
-QLineEdit:focus, QPlainTextEdit:focus { border: 1px solid #0d6b5e; }
-QLineEdit:disabled, QPlainTextEdit:disabled { background: #f3f4f6; color: #9ca3af; }
-QComboBox { background: #ffffff; border: 1px solid #d1d5db; border-radius: 8px;
-    padding: 7px 12px; font-size: 13px; color: #111827; }
-QComboBox:focus { border: 1px solid #0d6b5e; }
-QComboBox::drop-down { background: #ffffff; border: none; width: 24px; subcontrol-origin: padding; subcontrol-position: top right; }
-QComboBox::drop-down:hover { background: #f6f8fa; }
-QComboBox::down-arrow { image: none; width: 0; height: 0;
-    border-left: 5px solid transparent; border-right: 5px solid transparent;
-    border-top: 6px solid #6b7280; margin-right: 8px; }
-QComboBox QAbstractItemView { background: #ffffff; border: 1px solid #e5e7eb;
-    border-radius: 8px; padding: 4px;
-    selection-background-color: #cbd5e1; selection-color: #111827; outline: none; }
-
-/* 列表（不画独立边框，避免与卡片边框叠成双层方框） */
-QListWidget { background: #f6f8fa; border: none; border-radius: 10px;
-    padding: 8px 10px; font-size: 13px; outline: none; color: #111827; }
-QListWidget::item { padding: 4px 10px; border-radius: 6px; color: #111827; }
-QListWidget::item:hover { background: #f6f8fa; }
-QListWidget::item:selected { background: #cbd5e1; color: #111827; }
-QListWidget::item:selected:hover { background: #b8c4d0; }
-
-/* 状态栏 */
-QStatusBar { background: transparent; color: #6b7280; font-size: 12px; }
-
-/* 滚动条（垂直 + 水平均完整定义，避免出现原生箭头/小方块残留） */
-QScrollBar:vertical { background: transparent; width: 8px; margin: 0; border: none; }
-QScrollBar::handle:vertical { background: #d1d5db; border-radius: 4px; min-height: 24px; }
-QScrollBar::handle:vertical:hover { background: #9ca3af; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; width: 0;
-    background: none; border: none; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; border: none; }
-QScrollBar:horizontal { background: transparent; height: 8px; margin: 0; border: none; }
-QScrollBar::handle:horizontal { background: #d1d5db; border-radius: 4px; min-width: 24px; }
-QScrollBar::handle:horizontal:hover { background: #9ca3af; }
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { height: 0; width: 0;
-    background: none; border: none; }
-QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: none; border: none; }
-QAbstractScrollArea::corner { background: transparent; border: none; }
-
-/* 注：开关为自绘控件 Switch（见 app.py），不再使用 QCheckBox::indicator —
-   原生 indicator 画不出滑块，且 QCheckBox 聚焦时会出现虚线焦点框。 */
-"""
-
-QSS_DARK = """
-QMainWindow, QWidget { background-color: #0b1e1b; color: #e5e7eb;
-    font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
-    font-size: 13px; }
-
-QWidget#Sidebar { background: #0a1714; border-right: 1px solid #1f3530; }
-QLabel#LogoBadge { background: #14b8a6; color: #0a1714; border-radius: 8px;
-    font-size: 16px; font-weight: 700; min-width: 32px; max-width: 32px;
-    min-height: 32px; max-height: 32px; }
-QLabel#NavTitle { color: #e5e7eb; font-size: 13px; font-weight: 700; }
-QLabel#NavSub { color: #6b7280; font-size: 11px; }
-QPushButton#NavItem { background: transparent; color: #e5e7eb; border: none;
-    text-align: left; padding: 10px 14px; font-size: 13px; border-radius: 8px; }
-QPushButton#NavItem:hover { background: #1a2f2b; }
-QPushButton#NavActive { background: #134e4a; color: #5eead4; border: none;
-    text-align: left; padding: 10px 14px; font-size: 13px; font-weight: 600;
-    border-radius: 8px; }
-QPushButton#NavActive:hover { background: #134e4a; }
-QWidget#ThemeToggle { background: #0b1e1b; border-radius: 8px; }
-QPushButton#ThemeOpt { background: transparent; color: #6b7280; border: none;
-    padding: 6px 12px; font-size: 12px; border-radius: 6px; }
-QPushButton#ThemeOpt:checked { background: #1a2f2b; color: #e5e7eb;
-    border: 1px solid #1f3530; }
-
-QLabel#Eyebrow { color: #6b7280; font-size: 11px; font-weight: 600;
-    letter-spacing: 1px; }
-QLabel#PageTitle { color: #e5e7eb; font-size: 22px; font-weight: 700; }
-QLabel#PageSub { color: #9ca3af; font-size: 12px; }
-QLabel#CardTitle { color: #e5e7eb; font-size: 14px; font-weight: 600; }
-QLabel#CardSub { color: #9ca3af; font-size: 12px; }
-
-QFrame#Card { background: #132622; border: 1px solid #1f3530; border-radius: 12px; }
-
-/* 提示框 */
-QFrame#TipBox { background: transparent; border: none; }
-QLabel#TipText { color: #9ca3af; font-size: 12px; }
-
-QLabel#BadgeSuccess { background: #064e3b; color: #6ee7b7; border-radius: 999px;
-    padding: 3px 10px; font-size: 11px; font-weight: 600; }
-QLabel#BadgeWarn { background: #78350f; color: #fcd34d; border-radius: 999px;
-    padding: 3px 10px; font-size: 11px; font-weight: 600; }
-QLabel#BadgeNeutral { background: #1f3530; color: #9ca3af; border-radius: 999px;
-    padding: 3px 10px; font-size: 11px; font-weight: 600; }
-QLabel#BadgeInfo { background: #1e3a8a; color: #93c5fd; border-radius: 999px;
-    padding: 3px 10px; font-size: 11px; font-weight: 600; }
-
-QPushButton#Primary { background: #14b8a6; color: #0a1714; border: none;
-    border-radius: 8px; padding: 0 18px; font-size: 13px; font-weight: 600; }
-QPushButton#Primary:hover { background: #2dd4bf; }
-QPushButton#Primary:pressed { background: #5eead4; }
-QPushButton#Primary:disabled { background: #1f3530; color: #6b7280; }
-QPushButton#Secondary { background: #132622; color: #e5e7eb; border: 1px solid #1f3530;
-    border-radius: 8px; padding: 9px 18px; font-size: 13px; }
-QPushButton#Secondary:hover { border-color: #374151; }
-QPushButton#Secondary:disabled { color: #4b5563; background: #0f1f1c; }
-QPushButton#Ghost { background: transparent; color: #9ca3af; border: none;
-    padding: 8px 14px; font-size: 13px; border-radius: 8px; }
-QPushButton#Ghost:hover { background: #1a2f2b; color: #e5e7eb; }
-QPushButton#Danger { background: #132622; color: #f87171; border: 1px solid #f87171;
-    border-radius: 8px; padding: 9px 18px; font-size: 13px; }
-QPushButton#Danger:hover { background: #2a1212; }
-QPushButton#Danger:disabled { color: #4b5563; border-color: #374151; background: #132622; }
-
-QLineEdit, QPlainTextEdit { background: #1a2f2b; border: 1px solid #1f3530; border-radius: 8px;
-    padding: 8px 12px; font-size: 13px; color: #e5e7eb;
-    selection-background-color: #134e4a; selection-color: #5eead4; }
-QLineEdit:focus, QPlainTextEdit:focus { border: 1px solid #14b8a6; }
-QLineEdit:disabled, QPlainTextEdit:disabled { background: #0f1f1c; color: #4b5563; }
-QComboBox { background: #1a2f2b; border: 1px solid #1f3530; border-radius: 8px;
-    padding: 7px 12px; font-size: 13px; color: #e5e7eb; }
-QComboBox:focus { border: 1px solid #14b8a6; }
-QComboBox::drop-down { background: #1a2f2b; border: none; width: 24px; subcontrol-origin: padding; subcontrol-position: top right; }
-QComboBox::drop-down:hover { background: #1f3530; }
-QComboBox::down-arrow { image: none; width: 0; height: 0;
-    border-left: 5px solid transparent; border-right: 5px solid transparent;
-    border-top: 6px solid #9ca3af; margin-right: 8px; }
-QComboBox QAbstractItemView { background: #132622; border: 1px solid #1f3530;
-    border-radius: 8px; padding: 4px;
-    selection-background-color: #134e4a; selection-color: #5eead4; outline: none; }
-
-QListWidget { background: #0f1f1c; border: none; border-radius: 10px;
-    padding: 8px 10px; font-size: 13px; outline: none; color: #e5e7eb; }
-QListWidget::item { padding: 4px 10px; border-radius: 6px; color: #e5e7eb; }
-QListWidget::item:hover { background: #1a2f2b; }
-QListWidget::item:selected { background: #134e4a; color: #5eead4; }
-QListWidget::item:selected:hover { background: #0f766e; }
-
-QStatusBar { background: transparent; color: #6b7280; font-size: 12px; }
-
-/* 滚动条（垂直 + 水平均完整定义，避免出现原生箭头/小方块残留） */
-QScrollBar:vertical { background: transparent; width: 8px; margin: 0; border: none; }
-QScrollBar::handle:vertical { background: #1f3530; border-radius: 4px; min-height: 24px; }
-QScrollBar::handle:vertical:hover { background: #374151; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; width: 0;
-    background: none; border: none; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; border: none; }
-QScrollBar:horizontal { background: transparent; height: 8px; margin: 0; border: none; }
-QScrollBar::handle:horizontal { background: #1f3530; border-radius: 4px; min-width: 24px; }
-QScrollBar::handle:horizontal:hover { background: #374151; }
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { height: 0; width: 0;
-    background: none; border: none; }
-QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: none; border: none; }
-QAbstractScrollArea::corner { background: transparent; border: none; }
-"""
+LAST_INSTALL_KEY = "last_install"
 
 
 # ============================================================ 全局异常钩子
 
 def _global_excepthook(exc_type, exc_value, exc_tb):
-    """全局异常钩子：避免偶发静默闪退。"""
+    """全局异常钩子：记录诊断日志，避免偶发静默闪退。"""
     import traceback
+
     traceback.print_exception(exc_type, exc_value, exc_tb)
+    diagnostics.get_logger().error(
+        "未捕获异常", exc_info=(exc_type, exc_value, exc_tb))
     try:
         app = QApplication.instance()
         if app is not None:
             QMessageBox.critical(
                 None, "程序异常",
-                f"发生未捕获异常：\n{exc_type.__name__}: {exc_value}")
+                f"发生未捕获异常：\n{exc_type.__name__}: {exc_value}\n\n"
+                f"诊断日志：{diagnostics.log_path()}")
     except Exception:  # noqa: BLE001
         pass
 
@@ -283,26 +68,32 @@ sys.excepthook = _global_excepthook
 # ============================================================ 后台 Worker
 
 class Worker(QThread):
-    """在后台线程跑耗时操作，通过信号把日志/状态回传主线程。"""
+    """在后台线程跑耗时操作，通过信号把日志/状态回传主线程。
+
+    ``done_signal`` 传递 ``zhcore.OperationResult``，而不是单一布尔值：
+    GUI 必须能区分“成功 / 业务失败 / 抛出异常”，不能把失败显示为成功。
+    """
     log_signal = Signal(str)
     status_signal = Signal(str)
-    done_signal = Signal(bool)  # True=成功, False=出错
+    done_signal = Signal(object)
 
     def __init__(self, fn):
         super().__init__()
         self._fn = fn
 
     def run(self):
-        ok = True
+        result = None
         try:
-            self._fn(self.log_signal.emit, self.status_signal.emit)
-        except Exception as e:  # noqa: BLE001
-            ok = False
-            self.log_signal.emit(f"✗ [异常] {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            self.done_signal.emit(ok)
+            result = self._fn(self.log_signal.emit, self.status_signal.emit)
+        except Exception as error:  # noqa: BLE001
+            diagnostics.get_logger().exception("后台操作异常")
+            self.log_signal.emit(f"✗ [异常] {error}")
+            result = zhcore.OperationResult(
+                False, "exception", f"操作异常：{error}",
+                details=[f"✗ [异常] {error}"])
+        if result is None:
+            result = zhcore.OperationResult(True, "ok", "")
+        self.done_signal.emit(result)
 
 
 # ============================================================ 主窗口
@@ -316,156 +107,6 @@ NAV_ITEMS = [
 ]
 
 
-def _nav_icon(kind: str, color: str, size: int = 18) -> QIcon:
-    """按主题稿绘制线性导航图标（24 单位坐标系、描边 2、圆角端点）。"""
-    pm = QPixmap(size, size)
-    pm.fill(Qt.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.Antialiasing, True)
-    s = size / 24.0
-    p.scale(s, s)
-    pen = QPen(QColor(color))
-    pen.setWidthF(2.0)
-    pen.setCapStyle(Qt.RoundCap)
-    pen.setJoinStyle(Qt.RoundJoin)
-    p.setPen(pen)
-    p.setBrush(Qt.NoBrush)
-    if kind == "hanhua":        # 圆 + 对勾
-        p.drawEllipse(QPointF(12, 12), 10, 10)
-        path = QPainterPath(QPointF(8.5, 12.5))
-        path.lineTo(11, 15)
-        path.lineTo(16, 9)
-        p.drawPath(path)
-    elif kind == "zidian":      # 书本
-        p.drawRoundedRect(QRectF(6, 2, 14, 20), 2.5, 2.5)
-        p.drawLine(QPointF(6, 17), QPointF(20, 17))
-    elif kind == "copilot":     # 提示词气泡
-        path = QPainterPath(QPointF(5, 4))
-        path.lineTo(19, 4)
-        path.quadTo(22, 4, 22, 7)
-        path.lineTo(22, 15)
-        path.quadTo(22, 18, 19, 18)
-        path.lineTo(10, 18)
-        path.lineTo(5, 22)
-        path.lineTo(5, 18)
-        path.quadTo(2, 18, 2, 15)
-        path.lineTo(2, 7)
-        path.quadTo(2, 4, 5, 4)
-        p.drawPath(path)
-        p.drawLine(QPointF(7, 9), QPointF(17, 9))
-        p.drawLine(QPointF(7, 13), QPointF(14, 13))
-    else:                       # guanyu：信息圆
-        p.drawEllipse(QPointF(12, 12), 10, 10)
-        p.drawLine(QPointF(12, 16), QPointF(12, 11))
-        p.drawLine(QPointF(12, 8.01), QPointF(12, 7.99))
-    p.end()
-    return QIcon(pm)
-
-
-# ============================================================ 自绘开关
-
-class Switch(QAbstractButton):
-    """胶囊开关（自绘，替代 QCheckBox::indicator）。
-
-    自绘原因：
-    1. QCheckBox 获得焦点时 Qt 会在标签周围绘制虚线焦点框（观感突兀），
-       且 QSS 无法可靠关闭；
-    2. QSS 的 ::indicator 只能涂一块色，画不出「滑块」，看着不像开关。
-    自绘后可完全控制：底色随状态平滑过渡 + 白色滑块左右位移，无任何多余边框。
-    """
-
-    W, H, _PAD = 46, 26, 3
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setCheckable(True)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.NoFocus)          # 关键：不产生焦点虚线框
-        self.setFixedSize(self.W, self.H)
-        self.setAttribute(Qt.WA_Hover, True)
-        self._dark = False
-        self._t = 0.0                            # 0=关，1=开（动画进度）
-        self._anim = QPropertyAnimation(self, b"knob", self)
-        self._anim.setDuration(140)
-        self._anim.setEasingCurve(QEasingCurve.OutCubic)
-        self.toggled.connect(self._on_toggled)
-
-    # --- 供 QPropertyAnimation 驱动的动画属性 ---
-    def _get_knob(self) -> float:
-        return self._t
-
-    def _set_knob(self, v: float) -> None:
-        self._t = float(v)
-        self.update()
-
-    knob = Property(float, _get_knob, _set_knob)
-
-    def set_dark(self, dark: bool) -> None:
-        self._dark = bool(dark)
-        self.update()
-
-    def set_checked_instant(self, on: bool) -> None:
-        """无动画地同步状态（程序化刷新用，避免非点击场景出现滑动效果）。"""
-        self._anim.stop()
-        self.blockSignals(True)
-        self.setChecked(bool(on))
-        self.blockSignals(False)
-        self._t = 1.0 if on else 0.0
-        self.update()
-
-    def _on_toggled(self, checked: bool) -> None:
-        self._anim.stop()
-        self._anim.setStartValue(self._t)
-        self._anim.setEndValue(1.0 if checked else 0.0)
-        self._anim.start()
-
-    def sizeHint(self) -> QSize:
-        return QSize(self.W, self.H)
-
-    def enterEvent(self, e):
-        super().enterEvent(e)
-        self.update()
-
-    def leaveEvent(self, e):
-        super().leaveEvent(e)
-        self.update()
-
-    def paintEvent(self, _e):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
-        rad = r.height() / 2.0
-
-        if self._dark:
-            off_c, on_c, knob_c = QColor("#374151"), QColor("#14b8a6"), QColor("#f3f4f6")
-        else:
-            off_c, on_c, knob_c = QColor("#cbd5e1"), QColor("#0d6b5e"), QColor("#ffffff")
-
-        t = self._t
-        bg = QColor(
-            round(off_c.red()   + (on_c.red()   - off_c.red())   * t),
-            round(off_c.green() + (on_c.green() - off_c.green()) * t),
-            round(off_c.blue()  + (on_c.blue()  - off_c.blue())  * t),
-        )
-        if not self.isEnabled():
-            bg.setAlpha(110)
-        elif self.underMouse():
-            bg = bg.lighter(112) if self._dark else bg.darker(108)
-
-        p.setPen(Qt.NoPen)
-        p.setBrush(bg)
-        p.drawRoundedRect(r, rad, rad)
-
-        # 滑块
-        d = r.height() - self._PAD * 2
-        x0 = r.left() + self._PAD
-        x1 = r.right() - self._PAD - d
-        x = x0 + (x1 - x0) * t
-        p.setBrush(knob_c)
-        p.drawEllipse(QRectF(x, r.top() + self._PAD, d, d))
-        p.end()
-
-
 class App(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -475,59 +116,91 @@ class App(QMainWindow):
         self.setWindowIcon(QIcon(os.path.join(_icon_base, "assets", "icon.ico")))
         self.resize(1000, 660)
         self.setMinimumSize(820, 540)
+        self.setAcceptDrops(True)
+        # 无边框窗口 + 自定义标题栏
+        self.setWindowFlag(Qt.FramelessWindowHint, True)
         self._busy = False
         self._worker = None
+        self._last_result = None
+        self._update_state_cache = {}
 
         central = QWidget()
+        central.setObjectName("CentralRoot")
         self.setCentralWidget(central)
         self._build_layout(central)
 
-        # 主题（先建控件，再 apply，让所有 objectName 生效）
-        self._theme = "light"
-        self._apply_theme(self._load_theme())
+        # 主题跟随系统；启动只读检测，不写用户偏好
+        self._theme = self._detect_system_theme()
+        self._refresh_stylesheet()
 
         self.setStatusBar(QStatusBar())
-        self.statusBar().showMessage("就绪")
+        self.statusBar().showMessage("等待操作")
 
         self._pages = {}
         self._nav = {}
         self._build_sidebar()
         self._build_stack()
 
+        hints = QGuiApplication.styleHints()
+        if hasattr(hints, "colorSchemeChanged"):
+            hints.colorSchemeChanged.connect(self._on_system_theme_changed)
+        self._apply_theme(self._detect_system_theme())
+
         if self._auto_detect():
             self._refresh_path()
-        # 启动时按本机实际状态初始化开关；若上次选择了「禁止」而本机被恢复，
-        # 自动补执行一次，保证设置持续保持生效
-        self._refresh_update_pill(apply_preference=True)
 
     # ---------------------------------------------------------------- 主题
-    def _load_theme(self) -> str:
-        s = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        v = s.value("theme", "light")
-        return "dark" if str(v) == "dark" else "light"
+    def _detect_system_theme(self) -> str:
+        """读取系统明暗偏好；Qt 6.5+ 优先，Windows 注册表兜底。"""
+        try:
+            scheme = QGuiApplication.styleHints().colorScheme()
+            if hasattr(Qt, "ColorScheme"):
+                if scheme == Qt.ColorScheme.Dark:
+                    return "dark"
+                if scheme == Qt.ColorScheme.Light:
+                    return "light"
+        except (AttributeError, RuntimeError):
+            pass
+        if sys.platform == "win32":
+            try:
+                import winreg
 
-    def _save_theme(self, name: str) -> None:
-        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue("theme", name)
+                path = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as key:
+                    value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+                return "light" if int(value) else "dark"
+            except (OSError, ValueError, ImportError):
+                pass
+        return "light"
+
+    def _on_system_theme_changed(self, *_args) -> None:
+        theme = self._detect_system_theme()
+        if theme != self._theme:
+            self._apply_theme(theme)
+            self._set_status(f"已跟随系统切换为{'暗色' if theme == 'dark' else '亮色'}主题")
+
+    def _refresh_stylesheet(self) -> None:
+        app = QApplication.instance()
+        if app is None:
+            return
+        # 高对比度时必须交还给系统调色板，不能继续套自定义主题。
+        if high_contrast_enabled():
+            app.setStyleSheet("")
+            return
+        app.setStyleSheet(QSS_DARK if self._theme == "dark" else QSS_LIGHT)
 
     def _apply_theme(self, name: str) -> None:
-        """整体替换 QSS，刷新图标着色，保持无闪烁。"""
-        self._theme = name
-        QApplication.instance().setStyleSheet(QSS_DARK if name == "dark" else QSS_LIGHT)
-        self._save_theme(name)
-        # 自绘开关不读 QSS，需要手动同步配色
+        """应用系统主题（不写用户偏好），同步图标与标题栏。"""
+        self._theme = "dark" if name == "dark" else "light"
+        self._refresh_stylesheet()
         if getattr(self, "sw_disable_update", None) is not None:
-            self.sw_disable_update.set_dark(name == "dark")
-        # 重新着色侧栏图标（主题色改变）
+            self.sw_disable_update.set_dark(self._theme == "dark")
         if hasattr(self, "_nav") and self._nav:
             self._retint_nav_icons()
-
-    def _on_toggle_theme(self, btn: QPushButton) -> None:
-        self._apply_theme("dark" if btn.property("opt") == "dark" else "light")
-        # 同步分段按钮的 checked
-        for b in self._theme_group.buttons():
-            b.setChecked(b is btn)
-        # 重新着色所有 nav 图标（因为 _apply_theme 可能在 _build 之前调）
-        self._retint_nav_icons()
+        if hasattr(self, "_titlebar"):
+            self._titlebar.set_dark(self._theme == "dark")
+        if hasattr(self, "_version_combo"):
+            self._version_combo.set_dark(self._theme == "dark")
 
     def _retint_nav_icons(self) -> None:
         if not self._nav:
@@ -550,7 +223,10 @@ class App(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # 主体（v1.1：移除顶部薄荷色条，整体白色）
+        self._titlebar = TitleBar(self, APP_TITLE, APP_VERSION)
+        root.addWidget(self._titlebar)
+
+        # 主体（无边框窗口；标题栏独立，主体不再有亮色条）
         body = QWidget()
         body.setContentsMargins(0, 0, 0, 0)
         self._body_h = QHBoxLayout(body)
@@ -561,30 +237,10 @@ class App(QMainWindow):
     def _build_sidebar(self):
         sidebar = QWidget()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(232)
         sb = QVBoxLayout(sidebar)
-        sb.setContentsMargins(16, 18, 16, 16)
+        sb.setContentsMargins(16, 20, 16, 16)
         sb.setSpacing(4)
-
-        # Logo block
-        logo_row = QHBoxLayout()
-        logo_row.setSpacing(10)
-        badge = QLabel("译")
-        badge.setObjectName("LogoBadge")
-        badge.setAlignment(Qt.AlignCenter)
-        logo_row.addWidget(badge)
-        title_box = QVBoxLayout()
-        title_box.setSpacing(0)
-        nav_title = QLabel("汉化工具")
-        nav_title.setObjectName("NavTitle")
-        nav_sub = QLabel(f"v{APP_VERSION}")
-        nav_sub.setObjectName("NavSub")
-        title_box.addWidget(nav_title)
-        title_box.addWidget(nav_sub)
-        logo_row.addLayout(title_box)
-        logo_row.addStretch(1)
-        sb.addLayout(logo_row)
-        sb.addSpacing(14)
 
         # 导航
         self._nav_group = QButtonGroup(self)
@@ -596,7 +252,8 @@ class App(QMainWindow):
             b.setChecked(i == 0)
             b.setIconSize(QSize(18, 18))
             b.setProperty("nav_kind", kind)
-            b.setFocusPolicy(Qt.NoFocus)
+            b.setFocusPolicy(Qt.StrongFocus)
+            b.setAccessibleName(name)
             b.clicked.connect(lambda _checked=False, n=name: self._switch_page(n))
             self._nav_group.addButton(b)
             self._nav[name] = b
@@ -605,31 +262,6 @@ class App(QMainWindow):
 
         sb.addStretch(1)
 
-        # 侧栏底部：主题分段 + 版权
-        theme_row = QHBoxLayout()
-        theme_row.setSpacing(0)
-        theme_wrap = QWidget()
-        theme_wrap.setObjectName("ThemeToggle")
-        tw = QHBoxLayout(theme_wrap)
-        tw.setContentsMargins(4, 4, 4, 4)
-        tw.setSpacing(0)
-        self._theme_group = QButtonGroup(self)
-        self._theme_group.setExclusive(True)
-        for opt, label in (("light", "☀ 亮色"), ("dark", "🌙 暗色")):
-            tb = QPushButton(label)
-            tb.setObjectName("ThemeOpt")
-            tb.setCheckable(True)
-            tb.setProperty("opt", opt)
-            tb.setCursor(Qt.PointingHandCursor)
-            tb.setFocusPolicy(Qt.NoFocus)
-            tb.clicked.connect(lambda _checked=False, b=tb: self._on_toggle_theme(b))
-            self._theme_group.addButton(tb)
-            tw.addWidget(tb)
-        theme_row.addWidget(theme_wrap)
-        sb.addLayout(theme_row)
-        # 初始选中
-        for b in self._theme_group.buttons():
-            b.setChecked(b.property("opt") == self._theme)
 
         self._body_h.addWidget(sidebar)
 
@@ -644,6 +276,69 @@ class App(QMainWindow):
         for w in self._pages.values():
             self._stack.addWidget(w)
         self._stack.setCurrentWidget(self._pages["汉化"])
+        self._create_resize_handles()
+
+    # ---------------------------------------------------------------- 无边框窗口
+    def _create_resize_handles(self):
+        self._resize_handles = []
+        for edges in (
+            Qt.LeftEdge | Qt.TopEdge,
+            Qt.RightEdge | Qt.TopEdge,
+            Qt.LeftEdge | Qt.BottomEdge,
+            Qt.RightEdge | Qt.BottomEdge,
+            Qt.LeftEdge, Qt.RightEdge, Qt.TopEdge, Qt.BottomEdge,
+        ):
+            handle = ResizeHandle(self, edges)
+            handle.show()
+            self._resize_handles.append(handle)
+        self._layout_resize_handles()
+
+    def _layout_resize_handles(self):
+        handles = getattr(self, "_resize_handles", None)
+        if not handles:
+            return
+        maximized = self.isMaximized() or self.isFullScreen()
+        width, height = self.width(), self.height()
+        border, corner = 6, 12
+        for handle in handles:
+            if maximized:
+                handle.hide()
+                continue
+            edges = handle._edges
+            left = bool(edges & Qt.LeftEdge)
+            right = bool(edges & Qt.RightEdge)
+            top = bool(edges & Qt.TopEdge)
+            bottom = bool(edges & Qt.BottomEdge)
+            if left and top:
+                rect = (0, 0, corner, corner)
+            elif right and top:
+                rect = (width - corner, 0, corner, corner)
+            elif left and bottom:
+                rect = (0, height - corner, corner, corner)
+            elif right and bottom:
+                rect = (width - corner, height - corner, corner, corner)
+            elif left:
+                rect = (0, border, border, height - 2 * border)
+            elif right:
+                rect = (width - border, border, border, height - 2 * border)
+            elif top:
+                rect = (border, 0, width - 2 * border, border)
+            else:
+                rect = (border, height - border, width - 2 * border, border)
+            handle.setGeometry(*rect)
+            handle.show()
+            handle.raise_()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._layout_resize_handles()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.WindowStateChange, QEvent.ThemeChange):
+            if event.type() == QEvent.WindowStateChange and hasattr(self, "_titlebar"):
+                self._titlebar.sync_state()
+            QTimer.singleShot(0, self._layout_resize_handles)
 
     def _wrap_scroll(self, page: QWidget) -> QScrollArea:
         """把页面包进滚动区。
@@ -676,51 +371,71 @@ class App(QMainWindow):
     def _build_home(self):
         page = QWidget()
         outer = QVBoxLayout(page)
-        outer.setContentsMargins(24, 14, 24, 14)
-        outer.setSpacing(10)
+        outer.setContentsMargins(24, 16, 24, 16)
+        outer.setSpacing(8)
 
-        # 子页头（v1.3：应用户要求删除 eyebrow「汉化 · APPLY」）
+        # 子页头（无英文 eyebrow；标题 + 可选副标题）
+        self._home_count_badge = self._make_badge(
+            "BadgeNeutral", f"可用 {len(zhcore.list_versions())} 个版本")
         outer.addLayout(self._make_page_header(
-            title="一键汉化 GitHub Desktop",
-            sub="选择版本并应用，整文件覆盖 main.js / renderer.js。",
-            right_widget=self._make_badge("BadgeSuccess", f"内置 {len(zhcore.list_versions())} 个版本"),
+            title="汉化 GitHub Desktop",
+            sub="支持官方安装与便携/绿色版；按客户端版本匹配后整文件替换。",
+            right_widget=self._home_count_badge,
         ))
 
         # Card 1 — 安装路径（状态徽标放在标题行右侧，与其他卡片/页头对齐一致）
         self._path_pill = QLabel("待检测")
         self._path_pill.setObjectName("BadgeNeutral")
-        c1 = self._make_card("GitHub Desktop 安装", "指向 resources/app 目录",
-                             right_widget=self._path_pill)
+        c1 = self._make_card(
+            "GitHub Desktop 安装",
+            "可选择客户端根目录或 resources/app；也支持把客户端 EXE/文件夹拖到此窗口",
+            right_widget=self._path_pill)
         row1 = QHBoxLayout()
         row1.setSpacing(8)
         self.path_var = QLineEdit()
-        self.path_var.setPlaceholderText(r"例如 C:\Users\你\AppData\Local\GitHubDesktop\app-3.6.10\resources\app")
+        self.path_var.setPlaceholderText(
+            r"例如 D:\Portable\GitHubDesktop 或其中的 resources\app 目录")
         self.path_var.setMinimumHeight(36)
+        self.path_var.setAccessibleName("GitHub Desktop 安装路径")
+        self.path_var.editingFinished.connect(self._on_path_edited)
         row1.addWidget(self.path_var, 1)
-        row1.addWidget(self._make_btn("浏览", "Secondary", self._browse))
-        row1.addWidget(self._make_btn("自动检测", "Secondary", self._refresh_path))
+        self.btn_browse = self._make_btn("浏览", "Secondary", self._browse)
+        self.btn_detect = self._make_btn("自动检测", "Secondary", self._refresh_path)
+        row1.addWidget(self.btn_browse)
+        row1.addWidget(self.btn_detect)
         c1.body.addLayout(row1)
         outer.addWidget(c1.frame)
 
         # Card 2 — 汉化版本
-        c2 = self._make_card("汉化版本", "路径变化时自动按 app-X.Y.Z 对齐")
+        c2 = self._make_card("汉化版本", "按客户端 package.json / app-X.Y.Z 自动匹配")
         row2 = QHBoxLayout()
         row2.setSpacing(8)
         row2.addWidget(QLabel("选择版本："))
-        self._version_combo = QComboBox()
+        self._version_combo = ComboBox()
         self._version_combo.setMinimumWidth(140)
         self._version_combo.setMinimumHeight(36)
+        self._version_combo.setAccessibleName("选择汉化版本")
         self._version_combo.setToolTip("选择要应用到 GitHub Desktop 的汉化版本")
         self._version_combo.currentTextChanged.connect(lambda _t: self._update_version_hint())
         row2.addWidget(self._version_combo)
+        self._version_chips = QWidget()
+        self._version_chips.setObjectName("VersionChips")
+        self._version_chip_layout = QHBoxLayout(self._version_chips)
+        self._version_chip_layout.setContentsMargins(0, 0, 0, 0)
+        self._version_chip_layout.setSpacing(8)
+        self._version_chip_group = QButtonGroup(self)
+        self._version_chip_group.setExclusive(True)
+        self._version_chips.hide()
+        row2.addWidget(self._version_chips)
         self._version_hint = QLabel()
         self._version_hint.setObjectName("CardSub")
+        self._version_hint.setWordWrap(True)
         row2.addWidget(self._version_hint, 1)
         c2.body.addLayout(row2)
         outer.addWidget(c2.frame)
 
         # Card 3 — 操作
-        c3 = self._make_card("应用汉化", "首次应用会自动备份原文件为 .bak；还原可恢复英文原版")
+        c3 = self._make_card("应用汉化", "版本不一致会阻止写入；两个文件一起成功才视为完成")
         op_row = QHBoxLayout()
         op_row.setSpacing(8)
         op_row.addStretch(1)
@@ -737,12 +452,12 @@ class App(QMainWindow):
         self._update_pill.setObjectName("BadgeNeutral")
         cu = self._make_card(
             "禁止自动更新",
-            "开启后改名 Update.exe 以阻断自动更新（可逆，不改动程序文件）",
+            "仅在点击开关时改名 Update.exe；启动时不会自动修改。注意这会同时阻断安全更新。",
             right_widget=self._update_pill)
         row_u = QHBoxLayout()
         row_u.setSpacing(10)
         # 上下各留 5px：使本行高度 36px，与其它卡片的输入框/按钮行保持一致
-        row_u.setContentsMargins(0, 5, 0, 5)
+        row_u.setContentsMargins(0, 4, 0, 4)
         self.sw_disable_update = Switch()
         self.sw_disable_update.toggled.connect(self._on_toggle_disable_update)
         lbl_u = QLabel("禁止 GitHub Desktop 自动更新")
@@ -753,7 +468,7 @@ class App(QMainWindow):
         outer.addWidget(cu.frame)
 
         # Card 4 — 运行日志
-        c4 = self._make_card("运行日志", "操作反馈与提示，含 ✓ ✗ ⚠ 彩色圆点")
+        c4 = self._make_card("运行日志", "操作结果与错误提示")
         self.log = self._make_list(140)
         c4.body.addWidget(self.log)
         outer.addWidget(c4.frame, 1)
@@ -765,44 +480,47 @@ class App(QMainWindow):
     def _build_dict(self):
         page = QWidget()
         outer = QVBoxLayout(page)
-        outer.setContentsMargins(24, 14, 24, 14)
-        outer.setSpacing(10)
+        outer.setContentsMargins(24, 16, 24, 16)
+        outer.setSpacing(8)
 
         n = len(zhcore.list_versions())
+        self._dict_count_badge = self._make_badge("BadgeInfo", f"{n} 个版本")
         outer.addLayout(self._make_page_header(
-            title="内置汉化版本",
-            sub="旧版来自上游 MIT 补丁；3.6.10 基于官方同版本底包适配。",
-            right_widget=self._make_badge("BadgeInfo", f"{n} 个版本"),
+            title="汉化版本",
+            sub="内置版本逐文件散列校验；下载的新版本可直接导入，无需手工建目录。",
+            right_widget=self._dict_count_badge,
         ))
 
-        c1 = self._make_card("版本列表")
-        self.dict_list = self._make_list(180)
+        c1 = self._make_card("版本列表", "（本地）表示来自 EXE 同级的 dictionaries/，同名时优先于内置")
+        self.dict_list = self._make_list(152)
         c1.body.addWidget(self.dict_list)
         outer.addWidget(c1.frame)
 
-        c2 = self._make_card("操作", "打开本地字典目录 / 校验内置版本")
+        c2 = self._make_card("操作", "导入汉化包 / 打开本地字典目录 / 检查资源完整性")
         op = QHBoxLayout()
         op.setSpacing(8)
-        op.addWidget(self._make_btn("打开本地字典目录", "Secondary", self._open_local_dict_dir))
-        op.addWidget(self._make_btn("校验内置版本", "Secondary", self._on_check_dict))
+        self.btn_import_dict = self._make_btn("导入汉化包…", "Primary", self._on_import_dict)
+        self.btn_open_dict = self._make_btn("打开本地字典目录", "Secondary", self._open_local_dict_dir)
+        self.btn_check_dict = self._make_btn("检查资源完整性", "Secondary", self._on_check_dict)
+        op.addWidget(self.btn_import_dict)
+        op.addWidget(self.btn_open_dict)
+        op.addWidget(self.btn_check_dict)
         op.addStretch(1)
         c2.body.addLayout(op)
         c2.body.addSpacing(6)
-        sub = QLabel("校验结果")
+        sub = QLabel("检查结果")
         sub.setObjectName("CardSub")
         c2.body.addWidget(sub)
-        self.dict_check_list = self._make_list(120)
+        self.dict_check_list = self._make_list(112)
         c2.body.addWidget(self.dict_check_list)
         outer.addWidget(c2.frame, 1)
 
         tip = self._make_tip(
-            "提示：可用汉化版本见上方列表，EXE 默认打包仓库内最新 5 个版本。"
-            "当 GitHub Desktop 推出未内置的新版本，或你使用的是未内置的旧版时，可按以下步骤自定义汉化：\n"
-            "1. 在 GitHub Desktop 的「帮助 → 关于 GitHub Desktop」中查看你的版本号（如 3.7.0 或 3.5.5）\n"
-            "2. 前往字典项目（743859910 的仓库）下载或适配该版本的 main.js + renderer.js\n"
-            "3. 点击上方「打开本地字典目录」，在弹出的 dictionaries/ 下新建与版本号完全一致的子目录（如 3.7.0）\n"
-            "4. 把 main.js + renderer.js 放入该子目录，重启本程序\n"
-            "5. 版本列表会出现该版本并标记「（本地）」，切换到「汉化」页选中即可一键应用")
+            "导入方式：点击「导入汉化包…」，直接选择下载好的版本文件夹（含 main.js + renderer.js，"
+            "或其上级/Windows 目录），工具会自动识别版本并放到本地字典目录，无需手工建文件夹、无需重启。\n"
+            "若文件夹名无法识别版本，会提示你输入客户端版本。\n"
+            "安全提示：导入的 JavaScript 会被 GitHub Desktop 执行，请只使用可信来源；"
+            "本地字典无法通过内置散列校验，列表中会标记「（本地）」。")
         outer.addWidget(tip)
 
         return page
@@ -810,29 +528,78 @@ class App(QMainWindow):
     def _refresh_dict_page(self):
         self.dict_list.clear()
         pairs = zhcore.list_version_sources()
+        if hasattr(self, "_dict_count_badge"):
+            builtin = sum(1 for _, source in pairs if source == "内置")
+            self._dict_count_badge.setText(f"{len(pairs)} 个版本")
+            self._dict_count_badge.setToolTip(f"内置 {builtin} 个，本地 {len(pairs) - builtin} 个")
         if not pairs:
-            it = QListWidgetItem("（未找到任何汉化版本）")
-            self.dict_list.addItem(it)
+            self.dict_list.addItem(QListWidgetItem("（未找到任何汉化版本）"))
             return
-        for v, src in pairs:
-            tag = "（本地）" if src == "本地" else ""
-            it = QListWidgetItem(f"GitHub Desktop {v}  {tag}")
-            f = it.font()
-            f.setWeight(QFont.DemiBold)
-            it.setFont(f)
-            self.dict_list.addItem(it)
+        for version, source in pairs:
+            tag = "（本地）" if source == "本地" else ""
+            item = QListWidgetItem(f"GitHub Desktop {version}  {tag}")
+            font = item.font()
+            font.setWeight(QFont.DemiBold)
+            item.setFont(font)
+            item.setToolTip(str((zhcore.dictionary_source(version) or {}).get("path", "")))
+            self.dict_list.addItem(item)
 
     def _on_check_dict(self):
         self.dict_check_list.clear()
-        zhcore.validate_builtin(
+        zhcore.validate_dictionaries(
             log=lambda m: self._append_log(m, target=self.dict_check_list))
+
+    def _on_import_dict(self):
+        source = QFileDialog.getExistingDirectory(
+            self, "选择下载好的汉化版本文件夹（也可选择其上级目录）")
+        if not source:
+            return
+        detected = zhcore.detect_version(self.path_var.text().strip()) or ""
+        version, error = zhcore.infer_dictionary_version(source, None)
+        suggested = version or detected
+        if not version and error:
+            self._append_log(f"⚠ 未能自动识别版本：{error}")
+        text, accepted = QInputDialog.getText(
+            self, "确认汉化版本",
+            "请输入该汉化包对应的 GitHub Desktop 版本号（X.Y.Z）：",
+            text=suggested)
+        if not accepted:
+            return
+        version = text.strip()
+        if not version:
+            QMessageBox.warning(self, "版本必填", "请填写与客户端完全一致的版本号。")
+            return
+        confirm = QMessageBox.question(
+            self, "确认导入汉化包",
+            f"将导入版本 {version} 到本地字典目录。\n\n"
+            "导入的 main.js / renderer.js 会在应用汉化时写入 GitHub Desktop 并被其执行。\n"
+            "请确认文件来自可信来源。\n\n是否继续？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if confirm != QMessageBox.Yes:
+            return
+        self.dict_check_list.clear()
+        result = zhcore.import_local_dictionary(
+            source, version,
+            log=lambda m: self._append_log(m, target=self.dict_check_list))
+        if not result.ok:
+            QMessageBox.warning(self, "导入失败", result.message or "请查看检查结果。")
+            return
+        imported = result.data.get("version") or version
+        self._refresh_versions(select=imported)
+        self._refresh_dict_page()
+        self._switch_page("汉化")
+        self._set_status(f"已导入汉化版本 {imported}，可直接应用")
+        QMessageBox.information(
+            self, "导入完成",
+            f"版本 {imported} 已导入，并已在首页选中。\n"
+            "无需重启程序；请确认客户端已关闭后再点击「应用汉化」。")
 
     # ---------------------------------------------------------------- Copilot 全局提示词
     def _build_copilot(self):
         page = QWidget()
         outer = QVBoxLayout(page)
-        outer.setContentsMargins(24, 14, 24, 14)
-        outer.setSpacing(10)
+        outer.setContentsMargins(24, 16, 24, 16)
+        outer.setSpacing(8)
         outer.addLayout(self._make_page_header(
             title="Copilot 全局提交提示词",
             sub="统一设置生成提交说明时的语言、格式与内容要求。",
@@ -840,10 +607,15 @@ class App(QMainWindow):
         ))
 
         path_card = self._make_card("全局指令文件", "保存后供所有项目的 Copilot 会话读取")
+        path_row = QHBoxLayout()
+        path_row.setSpacing(8)
         self.copilot_path = QLineEdit()
         self.copilot_path.setReadOnly(True)
         self.copilot_path.setAccessibleName("Copilot 全局指令文件路径")
-        path_card.body.addWidget(self.copilot_path)
+        path_row.addWidget(self.copilot_path, 1)
+        self.btn_copilot_open = self._make_btn("打开目录", "Secondary", self._open_copilot_dir)
+        path_row.addWidget(self.btn_copilot_open)
+        path_card.body.addLayout(path_row)
         outer.addWidget(path_card.frame)
 
         prompt_card = self._make_card("提交说明要求", "仅编辑本工具管理的部分，保留文件中的其他全局指令")
@@ -949,6 +721,16 @@ class App(QMainWindow):
                 return
         self._load_copilot_prompt()
 
+    def _open_copilot_dir(self):
+        target = os.path.dirname(self.copilot_path.text().strip())
+        if not target:
+            return
+        try:
+            os.makedirs(target, exist_ok=True)
+            os.startfile(target)
+        except OSError as error:
+            self.copilot_status.setText(f"无法打开目录：{error}")
+
     def _save_copilot_prompt(self):
         if self._copilot_revision is None:
             return False
@@ -974,20 +756,40 @@ class App(QMainWindow):
     def _build_about(self):
         page = QWidget()
         outer = QVBoxLayout(page)
-        outer.setContentsMargins(24, 14, 24, 14)
-        outer.setSpacing(10)
+        outer.setContentsMargins(24, 16, 24, 16)
+        outer.setSpacing(8)
 
         outer.addLayout(self._make_page_header(
             title="GitHub Desktop 汉化工具",
         ))
 
-        c1 = self._make_card(f"{APP_TITLE}  v{APP_VERSION}")
+        versions = zhcore.list_versions()
+        builtin = [v for v in versions
+                   if (zhcore.dictionary_source(v) or {}).get("source") == "内置"]
+        preview = "、".join(versions[:4])
+        if len(versions) > 4:
+            preview += f" 等 {len(versions)} 个"
+        scope = "当前 EXE" if getattr(sys, "frozen", False) else "当前源码"
+        c1 = self._make_card(
+            f"{APP_TITLE}  v{APP_VERSION}",
+            right_widget=self._make_badge("BadgeNeutral", f"内置 {len(builtin)} 版"))
         body = QLabel(
-            "3.5.0–3.6.7 采用 743859910 提供的 MIT 整文件汉化补丁；\n"
-            "3.6.10 在官方同版本底包上移植中文字符串，保留当前版本逻辑。\n"
-            "按所选版本整体替换 main.js / renderer.js。\n\n"
-            "本工具基于 MIT 许可开源，与 GitHub, Inc. 无任何关联。\n"
-            "仅支持 Windows 10 / 11。")
+            "本工具用于把 GitHub Desktop 的 Windows 界面文本替换为中文，"
+            "支持官方安装版、便携版/绿色版和自定义汉化包导入。\n\n"
+            "主要能力：\n"
+            "· 自动识别客户端路径，读取 package.json 或 app-X.Y.Z 推断版本；\n"
+            "· 版本不匹配时阻止写入；两个目标文件按备份、临时文件、替换、校验、失败回滚处理；\n"
+            "· 支持还原英文原版、导入本地字典、检查内置字典完整性；\n"
+            "· 可选禁用 GitHub Desktop 自动更新，操作仅作用于所选安装，且会同时阻断安全更新；\n"
+            "· 可编辑当前用户的 Copilot 全局提交说明提示词。\n\n"
+            "来源说明：3.5.0–3.6.7 采用 743859910 提供的 MIT 整文件汉化补丁；"
+            "3.6.10 在官方同版本底包上移植中文字符串，保留当前版本逻辑。\n\n"
+            f"版本范围：{scope}可用 {len(versions)} 个汉化版本（{preview}）；"
+            f"EXE 内置最新 {BUNDLED_DICTIONARY_LIMIT} 版。\n"
+            "支持 3.5.0–3.6.7、3.6.10；3.6.8、3.6.9、3.6.11、3.7.0 未内置，"
+            "可在「字典」页导入；版本不一致会阻止写入，导入的本地字典会标记为未验证来源。\n\n"
+            "工具默认不发起网络请求，日志仅写入本机；仅支持 Windows 10/11。\n"
+            "本工具基于 MIT 许可开源，与 GitHub, Inc. / Microsoft 无任何关联。")
         body.setObjectName("CardSub")
         body.setWordWrap(True)
         c1.body.addWidget(body)
@@ -1028,7 +830,7 @@ class App(QMainWindow):
         # 而不是把卡片内部控件挤变形（QSizePolicy.Minimum = 仅 GrowFlag）
         f.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         v = QVBoxLayout(f)
-        v.setContentsMargins(20, 14, 20, 14)
+        v.setContentsMargins(20, 16, 20, 16)
         v.setSpacing(10)
         head = QHBoxLayout()
         head.setSpacing(12)
@@ -1050,15 +852,11 @@ class App(QMainWindow):
         return self._Card(f, v)
 
     def _make_page_header(self, title: str, sub: str = "",
-                          right_widget: QWidget = None, eyebrow: str = "") -> QHBoxLayout:
+                          right_widget: QWidget = None) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(12)
         left = QVBoxLayout()
         left.setSpacing(2)
-        if eyebrow:
-            e = QLabel(eyebrow)
-            e.setObjectName("Eyebrow")
-            left.addWidget(e)
         t = QLabel(title)
         t.setObjectName("PageTitle")
         left.addWidget(t)
@@ -1082,7 +880,7 @@ class App(QMainWindow):
         box.setObjectName("TipBox")
         box.setFrameShape(QFrame.NoFrame)
         v = QVBoxLayout(box)
-        v.setContentsMargins(14, 10, 14, 10)
+        v.setContentsMargins(12, 8, 12, 8)
         v.setSpacing(0)
         t = QLabel(text)
         t.setObjectName("TipText")
@@ -1113,70 +911,159 @@ class App(QMainWindow):
         return lw
 
     # ---------------------------------------------------------------- 日志
-    def _append_log(self, msg: str, target: QListWidget = None) -> None:
-        target = target if target is not None else self.log
-        # 主题感知配色
+    def _append_log(self, msg: str, target: QListWidget | None = None, level: str | None = None) -> None:
+        if target is None:
+            target = self.log
+        assert target is not None
         if self._theme == "dark":
             ok_c, err_c, warn_c = "#6ee7b7", "#fca5a5", "#fcd34d"
         else:
             ok_c, err_c, warn_c = "#065f46", "#b91c1c", "#92400e"
         color = "#e5e7eb" if self._theme == "dark" else "#111827"
-        if any(k in msg for k in ("✓", "已", "成功", "命中", "就绪", "完成", "一致", "校验通过")):
-            color = ok_c
-        elif any(k in msg for k in ("✗", "错误", "失败", "无清单", "未自动", "异常", "未通过")):
+        text = str(msg)
+        if level is None:
+            if any(k in text for k in ("✗", "错误", "失败", "异常", "不一致", "未通过", "冲突")):
+                level = "error"
+            elif any(k in text for k in ("⚠", "未验证", "跳过", "未找到", "缺少", "无法")):
+                level = "warning"
+            elif any(k in text for k in ("✓", "===", "完成", "通过", "一致")):
+                level = "success"
+        if level == "error":
             color = err_c
-        elif any(k in msg for k in ("⚠", "未命中", "跳过", "不一致", "建议", "无效")):
+        elif level == "warning":
             color = warn_c
-        it = QListWidgetItem("● " + msg)
-        it.setForeground(QColor(color))
-        target.addItem(it)
+        elif level == "success":
+            color = ok_c
+        item = QListWidgetItem("● " + text)
+        item.setForeground(QColor(color))
+        target.addItem(item)
         target.scrollToBottom()
+        diagnostics.get_logger().info(text)
 
     def _set_status(self, s: str) -> None:
         self.statusBar().showMessage(s)
+        diagnostics.get_logger().info("状态：" + str(s))
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
-        self.btn_apply.setEnabled(not busy)
-        self.btn_restore.setEnabled(not busy)
-        self._set_status("处理中…" if busy else "就绪")
+        controls = [
+            getattr(self, "btn_apply", None),
+            getattr(self, "btn_restore", None),
+            getattr(self, "btn_browse", None),
+            getattr(self, "btn_detect", None),
+            getattr(self, "btn_import_dict", None),
+            getattr(self, "btn_check_dict", None),
+            getattr(self, "btn_open_dict", None),
+            getattr(self, "path_var", None),
+            getattr(self, "_version_combo", None),
+            getattr(self, "_version_chips", None),
+            getattr(self, "sw_disable_update", None),
+        ]
+        for control in controls:
+            if control is not None:
+                control.setEnabled(not busy)
+        if busy:
+            self._set_status("处理中…")
+        else:
+            self._update_version_hint()
+            self._refresh_update_pill()
+            if not self.statusBar().currentMessage().startswith("操作失败"):
+                self._set_status("等待操作")
 
     # ---------------------------------------------------------------- 路径
-    def _refresh_path(self):
-        self._set_status("正在自动检测安装目录…")
-        found = zhcore.locate()
-        if found:
-            self.path_var.setText(found)
-            self._path_pill.setText("已自动定位")
-            self._path_pill.setObjectName("BadgeSuccess")
-            self._path_pill.style().unpolish(self._path_pill)
-            self._path_pill.style().polish(self._path_pill)
-            self._set_status("已自动定位安装目录")
-        else:
-            guess = os.path.join(os.environ.get("LOCALAPPDATA", ""), "GitHubDesktop")
-            self.path_var.setText(guess)
-            self._path_pill.setText("未自动检测到")
-            self._path_pill.setObjectName("BadgeWarn")
-            self._path_pill.style().unpolish(self._path_pill)
-            self._path_pill.style().polish(self._path_pill)
-            self._set_status("未自动检测到，请手动选择安装目录")
-        # 长路径输入框默认滚到末尾、开头被藏住，光标归零让用户先看到盘符
+    def _last_install(self) -> str:
+        value = QSettings(SETTINGS_ORG, SETTINGS_APP).value(LAST_INSTALL_KEY, "")
+        return str(value or "").strip()
+
+    def _remember_install(self, path: str) -> None:
+        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue(LAST_INSTALL_KEY, path or "")
+
+    def _set_path_pill(self, text: str, badge: str) -> None:
+        self._path_pill.setText(text)
+        self._path_pill.setObjectName(badge)
+        self._path_pill.style().unpolish(self._path_pill)
+        self._path_pill.style().polish(self._path_pill)
+
+    def _apply_selected_path(self, path: str, auto: bool = False):
+        """归一化用户选择的 EXE / 根目录 / resources/app，并刷新相关状态。"""
+        info = zhcore.install_info(path)
+        self.path_var.setText(info.appdir or info.requested)
         self.path_var.setCursorPosition(0)
+        if info.available:
+            if info.appdir:
+                self._remember_install(info.appdir)
+            label = "已自动定位" if auto else "已选择"
+            if info.portable:
+                label += " · 便携版"
+            self._set_path_pill(label, "BadgeInfo" if info.portable else "BadgeSuccess")
+            version = info.version or "未知"
+            self._set_status(f"已选择客户端 {version}（{info.layout}）")
+            if not auto:
+                self._append_log(f"· 已选择安装：{info.appdir}")
+                self._append_log(
+                    f"  · 客户端版本 {version}（来源：{info.version_source or '无法识别'}）")
+            for warning in info.warnings:
+                self._append_log("⚠ " + warning)
+        else:
+            if info.layout == "asar":
+                self._set_path_pill("app.asar 不支持", "BadgeWarn")
+            elif info.layout == "incomplete":
+                self._set_path_pill("资源不完整", "BadgeWarn")
+            else:
+                self._set_path_pill("路径无效", "BadgeWarn")
+            if not auto:
+                for error in info.errors:
+                    self._append_log("✗ " + error)
+                if info.layout == "asar":
+                    self._append_log("  · 该便携版把程序打包为 app.asar，当前版本无法直接改写；"
+                                     "请改用官方安装包或解包版。")
+            self._set_status("所选路径不是可改写的 GitHub Desktop 安装")
         self._sync_version_to_path()
         self._refresh_update_pill()
+        return info
 
-    def _browse(self):
-        d = QFileDialog.getExistingDirectory(
-            self, "选择 GitHub Desktop 的 resources/app 目录")
-        if d:
-            self.path_var.setText(d)
-            self._path_pill.setText("已选择")
-            self._path_pill.setObjectName("BadgeNeutral")
-            self._path_pill.style().unpolish(self._path_pill)
-            self._path_pill.style().polish(self._path_pill)
-            self.path_var.setCursorPosition(0)
+    def _refresh_path(self):
+        self._set_status("正在自动检测安装目录…")
+        found = zhcore.locate(self._last_install() or None)
+        if found:
+            self._apply_selected_path(found, auto=True)
+            self._set_status("已自动定位安装目录")
+        else:
+            self.path_var.clear()
+            self._set_path_pill("未自动检测到", "BadgeWarn")
+            self._set_status("未自动检测到，请浏览或拖入客户端目录")
+            self._version_hint.setText("请选择客户端目录或拖入 GitHubDesktop.exe")
             self._sync_version_to_path()
             self._refresh_update_pill()
+
+    def _browse(self):
+        directory = QFileDialog.getExistingDirectory(
+            self, "选择 GitHub Desktop 客户端目录（含 resources/app）")
+        if directory:
+            self._apply_selected_path(directory, auto=False)
+
+    def _on_path_edited(self):
+        text = self.path_var.text().strip()
+        if not text:
+            self._set_path_pill("待检测", "BadgeNeutral")
+            self._version_hint.setText("请选择客户端目录")
+            self._refresh_update_pill()
+            return
+        self._apply_selected_path(text, auto=False)
+
+    def dragEnterEvent(self, event):
+        if any(url.isLocalFile() for url in event.mimeData().urls()):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dropEvent(self, event):
+        urls = [url for url in event.mimeData().urls() if url.isLocalFile()]
+        if not urls:
+            super().dropEvent(event)
+            return
+        self._apply_selected_path(urls[0].toLocalFile(), auto=False)
+        event.acceptProposedAction()
 
     def _open_local_dict_dir(self):
         d = zhcore.local_dict_dir()
@@ -1188,133 +1075,172 @@ class App(QMainWindow):
             self._append_log(f"⚠ 无法打开本地字典目录：{e}")
             self._append_log(f"本地字典目录：{d}")
 
-    # ---------------------------------------------------------------- 禁止自动更新
-    def _load_disable_update(self) -> bool:
-        """读取用户上次的偏好（仅在无法探测本机实际状态时作为回退）。"""
-        s = QSettings(SETTINGS_ORG, SETTINGS_APP)
-        v = s.value("disable_update", "true")
-        return str(v).lower() not in ("false", "0", "")
-
-    def _save_disable_update(self, on: bool) -> None:
-        QSettings(SETTINGS_ORG, SETTINGS_APP).setValue("disable_update", "true" if on else "false")
-
-    def _sync_update_ui(self, st) -> None:
-        """把开关与徽标一次性刷成同一个状态（st: True/False/None）。
-
-        两者永远同源，杜绝「开关显示已禁止、徽标却显示允许更新」的矛盾。
-        """
-        if st is None:
-            self._update_pill.setText("未检测到 GD")
-            self._update_pill.setObjectName("BadgeNeutral")
+    # ---------------------------------------------------------------- 自动更新状态
+    def _sync_update_ui(self, state) -> None:
+        """开关与徽标严格反映本机实际状态；状态异常时禁用操作。"""
+        enabled = state in ("enabled", "disabled")
+        self.sw_disable_update.setEnabled(enabled and not self._busy)
+        self.sw_disable_update.set_checked_instant(state == "disabled")
+        if state == "disabled":
+            text, badge = "已禁止更新", "BadgeSuccess"
+            tip = "自动更新已禁用；点击开关可恢复"
+        elif state == "enabled":
+            text, badge = "允许更新", "BadgeWarn"
+            tip = "自动更新未被阻断；点击开关可禁止（同时影响安全更新）"
+        elif state == "inconsistent":
+            text, badge = "状态异常", "BadgeWarn"
+            tip = "Update.exe 与 Update.exe.disabled 同时存在，请手动清理其一"
+        elif state == "missing":
+            text, badge = "无更新器", "BadgeNeutral"
+            tip = "该安装未检测到 Update.exe（便携版通常没有更新器）"
         else:
-            self.sw_disable_update.set_checked_instant(bool(st))
-            self._update_pill.setText("已禁止更新" if st else "允许更新")
-            self._update_pill.setObjectName("BadgeSuccess" if st else "BadgeWarn")
+            text, badge = "未检测到 GD", "BadgeNeutral"
+            tip = "未检测到 GitHub Desktop 安装"
+        self._update_pill.setText(text)
+        self._update_pill.setObjectName(badge)
+        self._update_pill.setToolTip(tip + (f"\n更新器目录：{self._update_state_cache.get('deploy_root') or '未找到'}"))
         self._update_pill.style().unpolish(self._update_pill)
         self._update_pill.style().polish(self._update_pill)
 
-    def _refresh_update_pill(self, apply_preference: bool = False) -> None:
-        """按本机实际状态刷新开关与徽标。
-
-        apply_preference=True（仅启动时）：若用户上次选择了「禁止」，而本机当前
-        实际为「允许」，则自动补执行一次，兑现「设置持续保持」。
-        """
+    def _refresh_update_pill(self) -> None:
+        """只读取状态，绝不在启动或刷新时自动修改 Update.exe。"""
         appdir = self.path_var.text().strip() or None
-        actual = zhcore.auto_update_disabled(appdir)
-
-        if actual is None:
-            # 探测不到 GitHub Desktop：以偏好显示，不修改任何文件
-            want = self._load_disable_update()
-            self.sw_disable_update.set_checked_instant(want)
-            self._sync_update_ui(None)
-            return
-
-        if apply_preference and not actual and self._load_disable_update():
-            if zhcore.set_auto_update_disabled(
-                    True, appdir, log=lambda m: self._append_log(m)):
-                now = zhcore.auto_update_disabled(appdir)
-                if now:
-                    actual = True
-                    self._append_log("· 已按上次的设置继续保持「禁止自动更新」")
-
-        self._save_disable_update(bool(actual))
-        self._sync_update_ui(actual)
+        self._update_state_cache = zhcore.update_state(appdir)
+        self._sync_update_ui(self._update_state_cache.get("state"))
 
     def _on_toggle_disable_update(self, checked: bool) -> None:
-        """开关被点击：先在本机落地，成功后再持久化；失败则把开关回滚。
-
-        ⚠ 不要用 stateChanged(int) 的参数判断：PySide6 6.x 的 Qt.CheckState 是
-        原生 Python 枚举，与 int 不相等（`2 == Qt.Checked` 为 False）。旧实现
-        `checked = (state == Qt.Checked)` 恒为 False，导致「开启」被误判成「关闭」，
-        开关点多少次都无法真正禁用。此处直接以 toggled(bool) 为准。
-        """
+        """用户明确点击开关时才落地修改；失败则回滚界面。"""
         want = bool(checked)
         appdir = self.path_var.text().strip() or zhcore.locate() or None
-        verb = "禁止" if want else "允许"
-
-        self._append_log(f"== {verb}自动更新 ==")
-        ok = zhcore.set_auto_update_disabled(
-            want, appdir, log=lambda m: self._append_log(m))
-
-        actual = zhcore.auto_update_disabled(appdir)
-        if actual is None:
-            # 探测不到 GD：无法落地，还原开关并提示
-            self.sw_disable_update.set_checked_instant(not want)
-            self._sync_update_ui(None)
-            self._set_status("未检测到 GitHub Desktop，设置未生效")
+        if not appdir:
+            self._refresh_update_pill()
+            self._set_status("请先选择有效的 GitHub Desktop 安装目录")
             return
-
-        # 开关 / 徽标 / 偏好一律跟随实际结果
-        self.sw_disable_update.set_checked_instant(bool(actual))
-        self._save_disable_update(bool(actual))
-        self._update_pill.setText("已禁止更新" if actual else "允许更新")
-        self._update_pill.setObjectName("BadgeSuccess" if actual else "BadgeWarn")
-        self._update_pill.style().unpolish(self._update_pill)
-        self._update_pill.style().polish(self._update_pill)
-
-        if actual == want:
+        verb = "禁止" if want else "允许"
+        self._append_log(f"== {verb}自动更新 ==")
+        result = zhcore.set_auto_update_disabled(want, appdir)
+        self._refresh_update_pill()
+        actual = zhcore.auto_update_disabled(appdir)
+        if result.ok and actual == want:
             self._set_status(f"已{verb}自动更新（即时生效）")
-            self._append_log(f"· 设置已即时生效：当前{verb}自动更新")
+            self._append_log(f"· 当前状态：{'已禁止更新' if want else '允许更新'}")
         else:
             self._set_status(f"未能{verb}自动更新")
-            if not ok:
-                self._append_log("· 提示：请关闭 GitHub Desktop 后重试，或检查是否以管理员权限安装")
+            if result.message:
+                self._append_log("✗ " + result.message)
+            QMessageBox.warning(
+                self, f"未能{verb}自动更新",
+                (result.message or "操作未生效。")
+                + "\n\n建议关闭 GitHub Desktop 后重试，并检查目录权限。")
 
     # ---------------------------------------------------------------- 版本
-    def _refresh_versions(self):
-        vers = zhcore.list_versions()
+    def _refresh_versions(self, select: str | None = None):
+        versions = zhcore.list_versions()
+        if hasattr(self, "_home_count_badge"):
+            self._home_count_badge.setText(f"可用 {len(versions)} 个版本")
         self._version_combo.blockSignals(True)
         self._version_combo.clear()
-        self._version_combo.addItems(vers)
-        self._sync_version_to_path(vers)
+        self._version_combo.addItems(versions)
+        info = zhcore.install_info(self.path_var.text().strip())
+        detected = info.version if info.available else None
+        if select and select in versions:
+            index = versions.index(select)
+        elif detected and detected in versions:
+            index = versions.index(detected)
+        elif not self.path_var.text().strip() and versions:
+            index = 0
+        elif detected:
+            index = -1
+        else:
+            index = 0 if versions else -1
+        self._version_combo.setCurrentIndex(index)
         self._version_combo.blockSignals(False)
-        self._update_version_hint(vers)
+        self._rebuild_version_chips(versions)
+        self._update_version_hint(versions)
 
     def _sync_version_to_path(self, vers=None):
         if vers is None:
             vers = [self._version_combo.itemText(i)
                     for i in range(self._version_combo.count())]
-        if not vers:
+        info = zhcore.install_info(self.path_var.text().strip())
+        detected = info.version if info.available else None
+        if detected and detected in vers:
+            self._version_combo.blockSignals(True)
+            self._version_combo.setCurrentIndex(vers.index(detected))
+            self._version_combo.blockSignals(False)
+        elif info.available:
+            self._version_combo.blockSignals(True)
+            self._version_combo.setCurrentIndex(-1)
+            self._version_combo.blockSignals(False)
+        self._refresh_version_chip_state()
+        self._update_version_hint(vers)
+
+    def _rebuild_version_chips(self, versions):
+        """≤3 个版本用并排分段按钮，避免为两项打开下拉弹层。"""
+        if not hasattr(self, "_version_chips"):
             return
-        detected = zhcore.detect_version(self.path_var.text())
-        idx = vers.index(detected) if (detected and detected in vers) else 0
-        self._version_combo.setCurrentIndex(idx)
+        for button in list(self._version_chip_group.buttons()):
+            self._version_chip_group.removeButton(button)
+            button.deleteLater()
+        compact = 0 < len(versions) <= 3
+        for version in versions if compact else []:
+            button = QPushButton(version)
+            button.setObjectName("VersionChip")
+            button.setCheckable(True)
+            button.setMinimumHeight(36)
+            button.setAccessibleName(f"选择汉化版本 {version}")
+            button.clicked.connect(
+                lambda _checked=False, value=version: self._select_version(value))
+            self._version_chip_group.addButton(button)
+            self._version_chip_layout.addWidget(button)
+        self._version_chips.setVisible(compact)
+        self._version_combo.setVisible(not compact)
+        self._refresh_version_chip_state()
+
+    def _select_version(self, version: str) -> None:
+        if self._busy:
+            return
+        index = self._version_combo.findText(version)
+        if index >= 0:
+            self._version_combo.setCurrentIndex(index)
+
+    def _refresh_version_chip_state(self) -> None:
+        if not hasattr(self, "_version_chip_group"):
+            return
+        current = self._version_combo.currentText()
+        for button in self._version_chip_group.buttons():
+            button.setChecked(button.text() == current)
 
     def _update_version_hint(self, vers=None):
-        if vers is None:
-            vers = [self._version_combo.itemText(i)
-                    for i in range(self._version_combo.count())]
-        if not vers:
-            self._version_hint.setText("未找到内置汉化版本")
-            return
-        detected = zhcore.detect_version(self.path_var.text())
-        sel = self._version_combo.currentText()
-        if detected and detected in vers:
-            self._version_hint.setText(
-                f"检测到已安装 GitHub Desktop {detected} · 共 {len(vers)} 个内置版本")
+        self._refresh_version_chip_state()
+        versions = vers if vers is not None else [
+            self._version_combo.itemText(i) for i in range(self._version_combo.count())]
+        path = self.path_var.text().strip()
+        info = zhcore.install_info(path) if path else None
+        selected = self._version_combo.currentText()
+        can_apply = False
+        if not path:
+            text = "请先选择客户端目录；下载的新版本可在「字典」页导入"
+        elif info and not info.available:
+            text = "当前路径不可用：" + ("；".join(info.errors) or "未找到 resources/app")
+        elif not versions:
+            text = "未找到任何汉化版本，请在「字典」页导入"
+        elif not info or not info.version:
+            text = "无法识别客户端版本；应用前会要求二次确认"
+            can_apply = bool(selected)
+        elif info.version not in versions:
+            text = f"检测到客户端 {info.version}，但尚未导入该版本汉化包 → 请到「字典」页导入"
+        elif selected != info.version:
+            text = f"客户端 {info.version} 与所选 {selected} 不一致，已阻止应用"
         else:
-            self._version_hint.setText(
-                f"当前选择 {sel} · 共 {len(vers)} 个内置版本")
+            source = zhcore.dictionary_source(selected) or {}
+            suffix = " · 本地字典（未验证来源）" if source.get("source") == "本地" else ""
+            text = f"已匹配客户端 {info.version} · 来源：{source.get('source', '未知')}{suffix}"
+            can_apply = True
+        self._version_hint.setText(text)
+        button = getattr(self, "btn_apply", None)
+        if button is not None:
+            button.setEnabled(can_apply and not self._busy)
 
     # ---------------------------------------------------------------- Worker
     def _run(self, fn):
@@ -1327,53 +1253,119 @@ class App(QMainWindow):
         self._worker.done_signal.connect(self._on_worker_done)
         self._worker.start()
 
-    def _valid_path(self):
-        appdir = self.path_var.text().strip()
-        if not appdir or not os.path.isdir(appdir):
-            QMessageBox.critical(
-                self, "路径错误",
-                "请先指定有效的 GitHub Desktop 安装目录（resources/app）。")
+    def _current_install(self):
+        text = self.path_var.text().strip()
+        if not text:
+            QMessageBox.critical(self, "未选择客户端", "请先选择 GitHub Desktop 客户端目录。")
             return None
-        return appdir
+        info = zhcore.install_info(text)
+        if not info.available:
+            detail = "；".join(info.errors) or "未找到 main.js / renderer.js"
+            QMessageBox.critical(
+                self, "安装目录不可用",
+                f"{detail}\n\n请选择客户端根目录或 resources/app。")
+            self._apply_selected_path(text, auto=False)
+            return None
+        if info.appdir != self.path_var.text().strip():
+            self.path_var.setText(info.appdir)
+            self.path_var.setCursorPosition(0)
+        return info
 
     def _on_apply(self):
-        appdir = self._valid_path()
-        if not appdir:
+        if self._busy:
+            return
+        info = self._current_install()
+        if not info:
             return
         version = self._version_combo.currentText()
         if not version:
-            QMessageBox.critical(self, "未选择版本", "请先在上方选择要应用的汉化版本。")
+            QMessageBox.warning(
+                self, "未选择版本",
+                "请先在版本下拉框选择一个汉化版本；若客户端版本尚未收录，"
+                "请到「字典」页点击「导入汉化包…」。")
             return
-        disable_after = self.sw_disable_update.isChecked()
+        allow_mismatch = False
+        if info.version is None:
+            confirm = QMessageBox.question(
+                self, "无法确认客户端版本",
+                "未能从 package.json 或 app-X.Y.Z 目录确认客户端版本。\n\n"
+                "版本不匹配可能导致 GitHub Desktop 无法启动。\n是否仍要应用汉化？",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if confirm != QMessageBox.Yes:
+                return
+            allow_mismatch = True
+        elif info.version != version:
+            QMessageBox.critical(
+                self, "版本不匹配",
+                f"客户端版本为 {info.version}，但选择的是 {version}。\n\n"
+                "为避免客户端无法启动，已阻止写入。请选择匹配版本，或先导入对应汉化包。")
+            return
+
+        source = zhcore.dictionary_source(version) or {}
+        if source.get("source") == "本地":
+            confirm = QMessageBox.question(
+                self, "使用本地字典",
+                f"版本 {version} 来自本地字典：\n{source.get('path')}\n\n"
+                "该目录未通过内置散列校验，其中的 JavaScript 会被 GitHub Desktop 执行。\n"
+                "请确认文件来源可信。\n\n是否继续应用？",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if confirm != QMessageBox.Yes:
+                return
+
+        appdir = info.appdir
 
         def _task(log, status):
-            log(f"== 应用汉化（版本 {version}）==")
-            status("正在应用汉化…")
-            zhcore.apply_version(appdir, version, log=log)
-            # 汉化完成后，按开关状态同步「禁止自动更新」（开关默认开启）
-            log("== 同步禁止自动更新设置 ==")
-            zhcore.set_auto_update_disabled(disable_after, appdir, log=log)
+            log(f"== 应用汉化（客户端 {info.version or '未知'} · 汉化 {version}）==")
+            status("正在校验版本并写入文件…")
+            return zhcore.apply_version(
+                appdir, version, allow_mismatch=allow_mismatch)
 
         self._run(_task)
 
     def _on_restore(self):
-        appdir = self._valid_path()
-        if not appdir:
+        if self._busy:
             return
+        info = self._current_install()
+        if not info:
+            return
+        confirm = QMessageBox.question(
+            self, "还原为英文原版",
+            "将从 .bak 备份还原 main.js / renderer.js。\n"
+            "请确认 GitHub Desktop 已关闭。是否继续？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if confirm != QMessageBox.Yes:
+            return
+        appdir = info.appdir
 
         def _task(log, status):
             log("== 还原为英文原版 ==")
             status("正在还原…")
-            zhcore.restore(appdir, log=log)
+            return zhcore.restore(appdir)
 
         self._run(_task)
 
-    def _on_worker_done(self, ok: bool) -> None:
+    def _on_worker_done(self, result) -> None:
+        ok = bool(getattr(result, "ok", result))
+        code = getattr(result, "code", "")
+        self._last_result = result
         self._set_busy(False)
         if ok:
-            self._set_status("就绪")
-        else:
-            self._set_status("操作异常")
+            if code == "applied":
+                self._set_status("汉化完成，请完全退出并重新打开 GitHub Desktop")
+                self._append_log("· 下一步：完全退出 GitHub Desktop 后重新打开，界面即为中文",
+                                 level="success")
+            elif code == "restored":
+                self._set_status("已还原为英文原版，请重新打开 GitHub Desktop")
+            else:
+                self._set_status(getattr(result, "message", "") or "操作完成")
+            return
+        message = getattr(result, "message", "") or ""
+        details = getattr(result, "details", []) or []
+        if not message:
+            message = next((line for line in reversed(details)
+                            if line.lstrip().startswith("✗")), "操作未成功，请查看运行日志。")
+        self._set_status("操作失败")
+        QMessageBox.critical(self, "操作失败", message + f"\n\n诊断日志：{diagnostics.log_path()}")
 
     def closeEvent(self, event):
         if self._copilot_has_changes():
@@ -1419,9 +1411,70 @@ class App(QMainWindow):
         event.accept()
 
 
+def _run_self_test(qapp) -> int:
+    """打包后无头自检：验证页面、字典发现与模块导入，不触碰真实客户端。"""
+    import tempfile
+
+    temp = tempfile.mkdtemp(prefix="gdf-selftest-")
+    os.environ.setdefault("COPILOT_HOME", os.path.join(temp, "copilot"))
+    App._remember_install = lambda self, path: None
+    App._last_install = lambda self: ""
+    win = App()
+    qapp.processEvents()
+    pages = set(win._pages)
+    versions = zhcore.list_versions()
+    for page_name in win._pages:
+        win._switch_page(page_name)
+    win._switch_page("汉化")
+    about_page = win._pages["关于"].widget()
+    about_text = "\n".join(label.text() for label in about_page.findChildren(QLabel))
+    compact = 0 < len(versions) <= 3
+    checks = {
+        "pages": pages == {"汉化", "字典", "Copilot 提示词", "关于"},
+        "versions": len(versions) >= BUNDLED_DICTIONARY_LIMIT and versions[0].count(".") == 2,
+        "version_selector": (not win._version_chips.isHidden()
+                             and win._version_combo.isHidden()) if compact else (
+                                 win._version_chips.isHidden()
+                                 and not win._version_combo.isHidden()),
+        "about": (f"EXE 内置最新 {BUNDLED_DICTIONARY_LIMIT} 版" in about_text
+                  and "来源说明" in about_text and "主要能力" in about_text),
+        "copilot": hasattr(win, "copilot_editor"),
+        "import_button": hasattr(win, "btn_import_dict"),
+        "window_chrome": hasattr(win, "_titlebar") and len(win._resize_handles) == 8,
+    }
+    print("SELF_TEST " + json.dumps(checks, ensure_ascii=False))
+    for name, passed in checks.items():
+        print(("  PASS " if passed else "  FAIL ") + name)
+    ok = all(checks.values())
+    report = "SELF_TEST_OK" if ok else "SELF_TEST_FAILED"
+    target = os.environ.get("GDF_SELF_TEST_OUT")
+    if target:
+        try:
+            with open(target, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps({"ok": ok, "checks": checks}, ensure_ascii=False, indent=2))
+                handle.write("\n" + report + "\n")
+        except OSError:
+            pass
+    win.copilot_editor.setPlainText(win._copilot_loaded_text)
+    win._worker = None
+    win.close()
+    qapp.processEvents()
+    try:
+        import shutil
+
+        shutil.rmtree(temp, ignore_errors=True)
+    except OSError:
+        pass
+    print(report)
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
+    diagnostics.setup_logging()
     qapp = QApplication(sys.argv)
     qapp.setFont(QFont("Segoe UI", 9))
+    if "--self-test" in sys.argv:
+        sys.exit(_run_self_test(qapp))
     win = App()
     win.show()
     sys.exit(qapp.exec())

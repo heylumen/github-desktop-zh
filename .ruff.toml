@@ -1,0 +1,6 @@
+target-version = "py310"
+line-length = 120
+exclude = ["gui/build_env", "gui/build", "gui/dist", "**/__pycache__"]
+
+[lint]
+select = ["F401", "F841", "F821", "F811"]

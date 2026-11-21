@@ -4,7 +4,7 @@
 # 关键优化：
 #   1) excludes 排除所有未使用的 PySide6.Qt* 子模块
 #   2) 收尾过滤 a.binaries / a.datas：剔除未用 Qt DLL、多余插件、全部翻译
-#   3) 字典仅内置最新 5 版（3.6.4–3.6.7、3.6.10），其余用户可放 EXE 同级 dictionaries/
+#   3) 字典仅内置最新 2 版（3.6.10、3.6.7），其余用户可放 EXE 同级 dictionaries/
 #   4) optimize=2 移除 assert + docstring，减小 .pyc 体积
 #   5) upx_exclude 中保护 Python DLL 不被 UPX 压缩（防杀软误报）
 #
@@ -15,9 +15,13 @@
 #   - upx_exclude 添加 python313.dll / python3.dll 防止杀软误报
 import os
 import re
+import runpy
 
 # 本 spec 位于仓库根目录，SPECPATH 即仓库根
 REPO = SPECPATH
+_META = runpy.run_path(os.path.join(REPO, 'gui', 'product_meta.py'))
+APP_VERSION = _META['APP_VERSION']
+BUNDLED_LIMIT = _META['BUNDLED_DICTIONARY_LIMIT']
 APP = os.path.join(REPO, 'gui', 'app.py')
 ICON = os.path.join(REPO, 'gui', 'assets', 'icon.ico')
 DICT_DIR = os.path.join(REPO, 'dictionaries')
@@ -27,7 +31,7 @@ def _ver_key(v):
     return [int(x) for x in re.findall(r'\d+', v)]
 
 
-# ---- 字典：仅内置最新 5 版 ----
+# ---- 字典：仅内置最新 2 版（控制单文件体积） ----
 _dict_versions = []
 if os.path.isdir(DICT_DIR):
     for name in os.listdir(DICT_DIR):
@@ -37,18 +41,23 @@ if os.path.isdir(DICT_DIR):
                 and os.path.isfile(os.path.join(d, 'renderer.js'))):
             _dict_versions.append(name)
 _dict_versions.sort(key=_ver_key, reverse=True)
-DICT_LATEST = _dict_versions[:5]
+DICT_LATEST = _dict_versions[:BUNDLED_LIMIT]
 
 _dict_datas = [(os.path.join(DICT_DIR, v), os.path.join('dictionaries', v)) for v in DICT_LATEST]
+# 字典散列清单：GUI「检查资源完整性」按它校验内置版本
+_dict_manifest = os.path.join(DICT_DIR, 'manifest.json')
+if os.path.isfile(_dict_manifest):
+    _dict_datas.append((_dict_manifest, 'dictionaries'))
 # 运行时窗口图标：onefile 下 app.py 从 sys._MEIPASS/assets/icon.ico 加载
 # 注意 dest 必须是目录 'assets'，PyInstaller 会自动追加源文件名 → assets/icon.ico
 _dict_datas.append((ICON, 'assets'))
 
-# [DEBUG] 记录 spec 实际解析到的路径（安全写入：目录不存在时自动创建）
-_debug_dir = os.path.join(REPO, 'gui', 'build')
-os.makedirs(_debug_dir, exist_ok=True)
-with open(os.path.join(_debug_dir, 'spec_debug.txt'), 'w', encoding='utf-8') as _f:
-    _f.write(f"SPECPATH={SPECPATH}\nREPO={REPO}\nDICT_DIR={DICT_DIR}\nDICT_LATEST={DICT_LATEST}\n")
+# [DEBUG] 仅在设置了 GDF_SPEC_DEBUG 时记录路径，避免正常构建产生额外交件
+if os.environ.get('GDF_SPEC_DEBUG'):
+    _debug_dir = os.path.join(REPO, 'gui', 'build')
+    os.makedirs(_debug_dir, exist_ok=True)
+    with open(os.path.join(_debug_dir, 'spec_debug.txt'), 'w', encoding='utf-8') as _f:
+        _f.write(f"SPECPATH={SPECPATH}\nREPO={REPO}\nDICT_DIR={DICT_DIR}\nDICT_LATEST={DICT_LATEST}\n")
 
 a = Analysis(
     [APP],
@@ -109,7 +118,7 @@ _DROP_DLL = (
     'Qt6Sql', 'Qt6PrintSupport', 'Qt6Test',
 )
 _DROP_PLUGIN = (
-    'qdirect2d', 'qoffscreen', 'qminimal',                 # 备用平台插件（保留 qwindows）
+    'qdirect2d', 'qminimal',                       # 备用平台插件（保留 qwindows；qoffscreen 保留用于打包后自检）
     'qwebp', 'qtiff', 'qicns', 'qgif', 'qtga', 'qwbmp', 'qpdf', 'qsvg', 'qsvgicon',
     'qtuiotouch', 'qnetworklistmanager', 'qtvirtualkeyboardplugin',
     'qcertonlybackend', 'qopensslbackend', 'qschannelbackend',  # TLS（纯离线）
@@ -148,7 +157,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='github-desktop-zh-1.0.2',
+    name='github-desktop-zh-1.0.3',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

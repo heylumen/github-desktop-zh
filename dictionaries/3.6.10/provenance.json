@@ -1,0 +1,37 @@
+{
+  "version": "3.6.10",
+  "platform": "win32-x64",
+  "package_url": "https://github.com/desktop/desktop/releases/download/release-3.6.10/GitHubDesktop-3.6.10-x64-full.nupkg",
+  "checksums_url": "https://github.com/desktop/desktop/releases/download/release-3.6.10/GitHub.Desktop-3.6.10-checksums.txt",
+  "package_sha256": "0b6c599f45cf675208abd68459b3c8e99a533cc0a03e0d1544868a06d64e05fc",
+  "translation_source_url": "https://github.com/743859910/GitHub_Desktop_Simplified_Chinese/blob/51ab2165cc9d862dbff33c0f49e48906c74d6a13/Version/3.6.7/Temp/Windows.zh",
+  "translation_rules_sha256": "e8858ce367a12ebddab9e8f525b88af1dfcd41420913588989a174ca0cfb83e3",
+  "files": {
+    "main.js": {
+      "original_sha256": "2f1afa93cfddec3d1e9e5634c40312a6842c6a6dc70c3757a4c53aa775f13857",
+      "translated_sha256": "e1ecf9d0d5b2d848253874349d0ee7a8dadecf69fb9294c617e068341cca8e0d",
+      "matched_rules": 116,
+      "unmatched_rules": 3,
+      "validation": {
+        "file": "main.js",
+        "changedLiterals": 114,
+        "changedTemplateParts": 6,
+        "structureUnchanged": true,
+        "protectedConstantsUnchanged": true
+      }
+    },
+    "renderer.js": {
+      "original_sha256": "3a5b3789b9755ffcd61e2e9cd05f4964364cbbedf28ab9d5b343e425a7c23cd4",
+      "translated_sha256": "5ced5baccf49bd3d1f0f2e243799b49ff0cbd527da485b397396c0c1821c0494",
+      "matched_rules": 1340,
+      "unmatched_rules": 311,
+      "validation": {
+        "file": "renderer.js",
+        "changedLiterals": 1468,
+        "changedTemplateParts": 156,
+        "structureUnchanged": true,
+        "protectedConstantsUnchanged": true
+      }
+    }
+  }
+}

@@ -4,7 +4,7 @@
 # 关键优化：
 #   1) excludes 排除所有未使用的 PySide6.Qt* 子模块
 #   2) 收尾过滤 a.binaries / a.datas：剔除未用 Qt DLL、多余插件、全部翻译
-#   3) 字典仅内置最新 5 版（3.6.1–3.6.5），其余用户可放 EXE 同级 dictionaries/
+#   3) 字典仅内置最新 5 版（3.6.2–3.6.5、3.6.10），其余用户可放 EXE 同级 dictionaries/
 #   4) optimize=2 移除 assert + docstring，减小 .pyc 体积
 #   5) upx_exclude 中保护 Python DLL 不被 UPX 压缩（防杀软误报）
 #
